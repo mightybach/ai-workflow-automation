@@ -1,0 +1,28 @@
+{
+  "name": "flowpilot",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@10.34.9",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @flowpilot/contracts build && concurrently -k -n api,web \"pnpm --filter @flowpilot/api dev\" \"pnpm --filter @flowpilot/web dev\"",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint .",
+    "test": "pnpm --filter @flowpilot/api test",
+    "infra:up": "docker compose up -d --wait postgres rabbitmq",
+    "infra:down": "docker compose down",
+    "infra:config": "docker compose config --quiet"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "concurrently": "9.2.5",
+    "eslint": "10.14.0",
+    "globals": "16.5.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.2"
+  }
+}
+
