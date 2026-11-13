@@ -1,0 +1,127 @@
+// Define your application models and relationships here.
+// No tables are created until you add models and apply a migration.
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Example syntax only — uncomment or replace when designing your schema:
+// model Example {
+//   id   String @id @default(uuid()) @db.Uuid
+//   name String
+// }
+
+enum Role {
+  ADMIN
+  REVIEWER
+  CLIENT
+}
+
+enum Category {
+  REFUND_REQUEST
+  TECHNICAL_SUPPORT
+  INVOICE_REQUEST
+  GENERAL_QUESTION
+  OTHER
+}
+
+enum Status {
+  PENDING
+  RUNNING
+  AWAITING_APPROVAL
+  NEEDS_REVIEW
+  COMPLETED
+  REJECTED
+  FAILED
+  CANCELLED
+}
+
+model User {
+  id           String       @id @default(uuid()) @db.Uuid
+  email        String       @unique
+  role         Role
+  // Store a password hash produced by the application, never a raw password.
+  passwordHash String
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @db.Timestamptz(3)
+  requests     Request[]
+  auditEvents  AuditEvent[]
+}
+
+model Request {
+  id             String     @id @default(uuid()) @db.Uuid
+  rawText        String
+  createdById    String     @db.Uuid
+  createdBy      User       @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  idempotencyKey String
+  createdAt      DateTime   @default(now()) @db.Timestamptz(3)
+  workflows      Workflow[]
+
+  @@unique([createdById, idempotencyKey])
+}
+
+model Workflow {
+  id          String       @id @default(uuid()) @db.Uuid
+  requestId   String       @db.Uuid
+  request     Request      @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  category    Category?
+  status      Status       @default(PENDING)
+  version     Int          @default(0)
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime     @updatedAt @db.Timestamptz(3)
+  completedAt DateTime?    @db.Timestamptz(3)
+  auditEvents AuditEvent[]
+
+  @@index([requestId])
+  @@index([status, updatedAt])
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+  WORKER
+}
+
+// Append-only through application code. Database-level enforcement can be
+// added in a reviewed migration; relations preserve the referenced history.
+model AuditEvent {
+  id        String    @id @default(uuid()) @db.Uuid
+  runId     String    @db.Uuid
+  run       Workflow  @relation(fields: [runId], references: [id], onDelete: Restrict)
+  actorType ActorType
+  actorId   String?   @db.Uuid
+  actor     User?     @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  eventType String
+  traceId   String
+  // Store only redacted details, not credentials or full customer messages.
+  metadata  Json?     @db.JsonB
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([runId, createdAt])
+  @@index([actorId])
+  @@index([traceId])
+}
+
+enum OrderStatus {
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+// Synthetic orders only; orderNumber is the identifier supplied in requests.
+model MockOrder {
+  id          String      @id @default(uuid()) @db.Uuid
+  orderNumber String      @unique
+  status      OrderStatus @default(PROCESSING)
+  deliveredAt DateTime?   @db.Timestamptz(3)
+  totalAmount Decimal     @db.Decimal(12, 2)
+  currency    String      @default("AUD") @db.VarChar(3)
+  createdAt   DateTime    @default(now()) @db.Timestamptz(3)
+}

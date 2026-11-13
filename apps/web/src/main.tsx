@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HealthResponseSchema } from '@flowpilot/contracts';
+import { RequestWorkspace } from './features/requests/RequestWorkspace';
+import { createDraftStore } from './features/requests/draft-store';
 import './style.css';
+
+const draftStore = createDraftStore();
 
 function App() {
   const [status, setStatus] = useState('Checking API connection…');
@@ -29,6 +33,7 @@ function App() {
       <p className="eyebrow">FLOWPILOT / DEVELOPMENT</p>
       <h1>A foundation for dependable workflows.</h1>
       <p>Submit, review and track synthetic requests — one validated step at a time.</p>
+      <RequestWorkspace store={draftStore} />
       <section aria-labelledby="foundation-title">
         <span className="badge">Phase 0</span>
         <h2 id="foundation-title">Foundation status</h2>

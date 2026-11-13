@@ -1,0 +1,31 @@
+{
+  "name": "@flowpilot/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm validate && pnpm generate && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "validate": "prisma validate --config prisma7.config.ts",
+    "format": "prisma format --config prisma7.config.ts",
+    "generate": "prisma generate --config prisma7.config.ts",
+    "migrate:dev": "prisma migrate dev --config prisma7.config.ts",
+    "migrate:deploy": "prisma migrate deploy --config prisma7.config.ts",
+    "studio": "prisma studio --config prisma7.config.ts"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "prisma": "7.10.1"
+  }
+}
+
