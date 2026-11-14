@@ -16,22 +16,24 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: cp .env.example .env
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
+      - run: pnpm infra:config
+      - run: pnpm infra:up
+      - run: pnpm db:deploy
+      - run: pnpm db:seed
+      - run: pnpm test:integration
+      - run: pnpm --filter @flowpilot/db exec prisma migrate status --config prisma7.config.ts
       - run: pnpm --filter @flowpilot/web exec playwright install --with-deps chromium
-      - name: Check CRUD preview in the browser
+      - name: Check authenticated request flow in the browser
         run: |
           pnpm dev > "$RUNNER_TEMP/flowpilot-dev.log" 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
           pnpm --filter @flowpilot/web test:ui
-      - run: cp .env.example .env
-      - run: pnpm infra:config
-      - run: pnpm infra:up
-      - run: pnpm db:deploy
-      - run: pnpm --filter @flowpilot/db exec prisma migrate status --config prisma7.config.ts
       - if: always()
         run: docker compose logs --no-color
       - if: always()

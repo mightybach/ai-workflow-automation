@@ -17,7 +17,9 @@
     "generate": "prisma generate --config prisma7.config.ts",
     "migrate:dev": "prisma migrate dev --config prisma7.config.ts",
     "migrate:deploy": "prisma migrate deploy --config prisma7.config.ts",
-    "studio": "prisma studio --config prisma7.config.ts"
+    "studio": "prisma studio --config prisma7.config.ts",
+    "seed": "node --env-file-if-exists=../../.env --import tsx src/seed.ts",
+    "test:prepare": "node --env-file-if-exists=../../.env scripts/prepare-test-db.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.1",
@@ -25,7 +27,8 @@
   },
   "devDependencies": {
     "@types/node": "24.19.2",
-    "prisma": "7.10.1"
+    "prisma": "7.10.1",
+    "tsx": "4.23.15"
   }
 }
 

@@ -1,24 +1,30 @@
 # Phase 1 API contracts
 
-These are shared Zod schemas and inferred TypeScript types. They define the planned HTTP boundary; only the liveness endpoint is currently implemented. They do not grant authorization, persist records, execute workflows or replace database constraints.
+These are shared Zod schemas and inferred TypeScript types for the implemented Phase 1 HTTP boundary. Route handlers separately enforce authentication, permissions and transactional persistence. Validation alone does not grant authorization, execute workflows or replace database constraints.
 
 Import through `@flowpilot/contracts`. The package remains browser-safe and does not import Prisma or database credentials.
 
-## Planned endpoints
+## Implemented endpoints
 
 Base path: `/api/v1`.
 
 | Method | Path | Input | Success response |
 | --- | --- | --- | --- |
 | GET | /health/live | None | 200 HealthResponseSchema |
+| GET | /health/ready | None | 200 { status: "ok" }; 503 if PostgreSQL is unavailable |
+| POST | /auth/login | LoginBodySchema | 200 SessionResponseSchema + HttpOnly cookie |
+| GET | /auth/me | Session cookie | 200 SessionResponseSchema |
+| POST | /auth/logout | Session cookie | 200 LogoutResponseSchema |
 | POST | /requests | CreateRequestBodySchema + IdempotencyHeadersSchema | 202 CreateRequestResponseSchema |
 | GET | /requests | RequestListQuerySchema | 200 RequestListResponseSchema |
 | GET | /requests/:id | IdParamsSchema | 200 RequestDetailSchema |
 | GET | /workflows/:id | IdParamsSchema | 200 WorkflowResponseSchema |
 
-All request/workflow routes require authenticated access when implemented. The server must derive the creator from that identity and enforce read/write permissions. The owner's CLIENT role exists in the schema, but its exact resource permissions must be agreed before route implementation. No unauthenticated business route should be exposed while that decision is pending.
+All request/workflow routes require authenticated access. The server derives creator identity from the opaque session cookie. CLIENT may submit and read its own requests/workflows; ADMIN and REVIEWER may submit and read all requests/workflows. Ownership scope applies before list filtering/counting/pagination. Other users' request/workflow identifiers return 404 to CLIENT. Current user activity and role are read from PostgreSQL on each request.
 
-UserResponseSchema, AuditEventResponseSchema and MockOrderResponseSchema are safe-shape DTOs for later authorized reads; this change does not add user/admin/audit/order endpoints. Authentication, approvals, execution, cancellation and retry contracts are deferred to their implementation slices.
+Unsafe requests (including login/logout) require an exact `Origin` matching WEB_ORIGIN and `X-Flowpilot-Client: web`. The browser supplies Origin for POSTs; API clients must set it explicitly. No cross-origin CORS access is enabled. Login accepts only email/password, rotates any current session, and is limited to ten attempts per minute per IP. The raw token exists only in an HttpOnly SameSite=Strict cookie; its SHA-256 hash is stored in PostgreSQL. Sessions expire after eight hours; logout deletes the session record. The entry point is restricted to loopback development/test mode and explicitly enabled demo auth.
+
+UserResponseSchema is used by authenticated session responses. AuditEventResponseSchema and MockOrderResponseSchema remain DTOs for later authorized reads; no general user/admin/audit/order endpoints are exposed. Approval, execution, cancellation and retry endpoints are deferred to later phases.
 
 ## Create a request
 
@@ -26,6 +32,8 @@ UserResponseSchema, AuditEventResponseSchema and MockOrderResponseSchema are saf
 POST /api/v1/requests
 Content-Type: application/json
 Idempotency-Key: demo-request-001
+Origin: http://127.0.0.1:5173
+X-Flowpilot-Client: web
 
 {"rawText":"My synthetic order 12345 arrived damaged."}
 ```
@@ -69,7 +77,7 @@ Unknown query fields and invalid coercions (booleans, null, arrays, fractions, b
 
 The response is `{ items: RequestSummary[], pagination: { page, pageSize, total } }`. Each summary contains id, createdById, createdAt and a workflows array. One request may have multiple runs; no single latest run is implied. Order embedded runs by createdAt ascending, then id ascending for a deterministic result.
 
-Detail adds rawText. Lists omit full text; both responses omit idempotency keys. The UI preview's title/message fields are demo-only and must be mapped or replaced when integrating this contract.
+Detail adds rawText. Lists omit full text; both responses omit idempotency keys. The application uses these routes for saved requests. Original draft-preview components remain separate examples and do not provide edit/delete behavior for persisted records.
 
 ## Serialization and errors
 

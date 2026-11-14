@@ -4,3 +4,4 @@ export * from './users.js';
 export * from './requests.js';
 export * from './workflows.js';
 export * from './records.js';
+export * from './auth.js';

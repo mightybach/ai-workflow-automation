@@ -9,8 +9,8 @@ interface Props<T> {
   busy: boolean;
   caption: string;
   onView(record: T): void;
-  onEdit(record: T): void;
-  onDelete(record: T): void;
+  onEdit?(record: T): void;
+  onDelete?(record: T): void;
 }
 export function CrudTable<T>({ records, columns, getId, getLabel, busy, caption, onView, onEdit, onDelete }: Props<T>) {
   return (
@@ -23,8 +23,8 @@ export function CrudTable<T>({ records, columns, getId, getLabel, busy, caption,
             {columns.map((column) => <td key={column.key}>{column.render(record)}</td>)}
             <td><div className="row-actions">
               <button className="secondary" disabled={busy} aria-label={'View ' + getLabel(record)} onClick={() => onView(record)}>View</button>
-              <button className="secondary" disabled={busy} aria-label={'Edit ' + getLabel(record)} onClick={() => onEdit(record)}>Edit</button>
-              <button className="danger" disabled={busy} aria-label={'Delete ' + getLabel(record)} onClick={() => onDelete(record)}>Delete</button>
+              {onEdit && <button className="secondary" disabled={busy} aria-label={'Edit ' + getLabel(record)} onClick={() => onEdit(record)}>Edit</button>}
+              {onDelete && <button className="danger" disabled={busy} aria-label={'Delete ' + getLabel(record)} onClick={() => onDelete(record)}>Delete</button>}
             </div></td>
           </tr>
         ))}</tbody>

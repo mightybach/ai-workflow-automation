@@ -14,16 +14,16 @@ It is also a portfolio project for learning and demonstrating full-stack develop
 
 FlowPilot is in early development. The foundation currently includes:
 
-- A React interface that checks the API connection.
-- A request-draft preview with create, view, edit and delete actions, search and pagination.
-- A Fastify API with a liveness endpoint.
+- Demo sign-in with persistent sessions and role-based access.
+- Saved synthetic requests with search, filters, pagination and request/workflow details.
+- A Fastify API with liveness and database-readiness endpoints.
 - Shared TypeScript types and runtime validation schemas.
-- Phase 1 API contracts for request submission/list/detail and workflow reads (routes pending).
-- A Prisma/PostgreSQL setup ready for application schema design.
+- Validated API contracts and implemented request submission/list/detail and workflow reads.
+- PostgreSQL persistence through Prisma, versioned migrations and repeatable demo seeds.
 - Docker Compose configuration for PostgreSQL and RabbitMQ.
 - Build, typecheck, lint and API test commands, plus a GitHub Actions CI workflow.
 
-Drafts are synthetic and stored in memory only; refreshing the page clears them. Request submission, database persistence, AI classification, workflow execution and human approvals are planned. The current app lets you try the draft UI and check the development setup; it does not process customer requests yet.
+Phase 1 is implemented. Submitting a request atomically saves its text, a pending workflow and an audit event. Repeated submissions using the same key and text return the original result. Data and sessions survive API restarts. AI classification, workflow execution and human approval actions are planned; workflows remain pending for now.
 
 ## Run locally
 
@@ -31,7 +31,7 @@ Drafts are synthetic and stored in memory only; refreshing the page clears them.
 
 - Node.js **24.22.3** (also recorded in `.node-version`).
 - pnpm **10.34.9**.
-- Docker with a running Linux engine if you want to start PostgreSQL and RabbitMQ.
+- Docker with a running Linux engine for PostgreSQL (required) and RabbitMQ (reserved for a later phase).
 
 After installing Node.js, install the pinned package manager:
 
@@ -60,16 +60,29 @@ On macOS or Linux:
 cp .env.example .env
 ```
 
-Install dependencies and start the development servers:
+Install dependencies, start infrastructure, apply migrations and seed the demo:
 
 ```sh
 pnpm install --frozen-lockfile
+pnpm infra:up
+pnpm db:deploy
+pnpm db:seed
 pnpm dev
 ```
 
 Open **http://127.0.0.1:5173**. The page should display **API connected**. Use **Check connection** to try again if the API was still starting.
 
-In **Request drafts**, choose **New draft**, enter a made-up title and message, and choose **Create draft**. Use **View**, **Edit** or **Delete** on a draft; deleting requires confirmation. Search filters the drafts, and lists longer than five drafts have page controls. These actions affect this preview only, and refreshing the page discards every draft.
+Sign in with one of these synthetic accounts, using `DEMO_PASSWORD` from your `.env` (the example value is `flowpilot_demo_only`):
+
+| Account | Access |
+| --- | --- |
+| `client@flowpilot.test` | Submit requests and read only its own requests/workflows |
+| `reviewer@flowpilot.test` | Submit requests and read all demo requests/workflows |
+| `admin@flowpilot.test` | Submit requests and read all demo requests/workflows |
+
+Enter a made-up message and choose **Submit request**. Open **View** to inspect saved text and pending workflows. Use search, status/category filters and page controls to find records. Refreshing the page preserves saved requests and restores your session. **Sign out** revokes the session. Submitted records have no edit/delete actions; their original text and audit history are retained.
+
+Seed commands retain existing users, passwords and orders. Changing `DEMO_PASSWORD` after seeding does not reset existing accounts. Demo order delivery dates are fixed synthetic fixtures. The sign-in flow is deliberately local-only: the server accepts loopback hosts, requires `DEMO_AUTH_ENABLED=true`, and refuses production mode. Public deployment needs a separate authentication/deployment design.
 
 The API runs at **http://127.0.0.1:3001**. You can check it directly at `/api/v1/health/live`, which returns:
 
@@ -79,9 +92,9 @@ The API runs at **http://127.0.0.1:3001**. You can check it directly at `/api/v1
 
 Press `Ctrl+C` in the terminal to stop the app.
 
-### Optional: start local infrastructure
+### Local infrastructure
 
-The current UI and API work without PostgreSQL or RabbitMQ. To start those services for development, run:
+PostgreSQL is required for sign-in and requests; RabbitMQ is not used for processing yet. To validate and start the configured services, run:
 
 ```sh
 pnpm infra:config
@@ -100,7 +113,7 @@ The example credentials are for local development. If you change service credent
 
 ## Design the database schema
 
-The Prisma 7.10.1 setup lives in `packages/db`. Edit models and relationships in **`packages/db/prisma/schema.prisma`**. It defines `User`, `Request`, `Workflow`, `AuditEvent` and `MockOrder`, with an initial migration included. The API is not yet connected to these tables.
+The Prisma 7.10.1 setup lives in `packages/db`. Edit models and relationships in **`packages/db/prisma/schema.prisma`**. It defines `User`, `Session`, `Request`, `Workflow`, `AuditEvent` and `MockOrder`. Committed migrations create these tables and the API uses them for Phase 1 persistence.
 
 `packages/db/prisma7.config.ts` loads `DATABASE_URL` from the root `.env` (or the existing environment). Prisma can validate the schema and generate the client without a running database:
 
@@ -120,11 +133,11 @@ pnpm db:generate
 
 For future schema changes, use `pnpm db:migrate --name describe_your_change` to create and apply a development migration. Review its generated SQL and commit the schema and migration files. Both migration commands change the database. Generated client files are ignored by Git and regenerated by `pnpm build`. To inspect a configured database, use `pnpm db:studio`; `pnpm db:deploy` applies existing migrations without creating new ones.
 
-This tooling does not connect the API or draft UI to PostgreSQL. Application models, relationships and API contracts remain yours to design. A client factory is available from `@flowpilot/db` for later API integration.
+The API uses the `@flowpilot/db` client factory and shared API contracts. Every request-creation transaction saves its initial workflow and audit event together. Sessions store a hash of an opaque browser token; passwords are hashed with scrypt. Session cookies are HttpOnly and SameSite=Strict, expire after eight hours, and are checked against current database user permissions.
 
 ## Development checks
 
-See [API contracts](packages/contracts/README.md) for planned endpoint shapes, validation limits and serialization rules. These contracts are defined; business routes are not implemented yet.
+See [API contracts](packages/contracts/README.md) for implemented endpoint shapes, validation limits, permissions and serialization rules.
 
 Run these commands from the repository root. Build first so the shared contracts are available to the other packages:
 
@@ -133,18 +146,19 @@ pnpm build
 pnpm typecheck
 pnpm lint
 pnpm test
+pnpm test:integration
 ```
 
-`pnpm dev` builds the shared contracts automatically. Restart it after editing those contracts.
+`pnpm dev` builds API dependencies automatically. Restart it after editing contracts or database-client code. Integration tests create/migrate the isolated local `flowpilot_test` database from `TEST_DATABASE_URL`; they never reset your main database. Keep that test URL separate from `DATABASE_URL`.
 
-To check the CRUD preview in a browser, start `pnpm dev` in another terminal, then run:
+To check the complete request flow in a browser, seed the demo and start `pnpm dev` in another terminal, then run:
 
 ```sh
 pnpm --filter @flowpilot/web exec playwright install chromium
 pnpm --filter @flowpilot/web test:ui
 ```
 
-The UI check covers create/read/update/delete, validation, delete cancellation, search, pagination, safe text rendering and clearing drafts on reload. CI also runs this check. Browser binaries are separate from `pnpm install`.
+The UI check covers sign-in, validation, a retry after a committed response is lost, request/workflow reads, filters, safe text rendering, mobile layout, session restoration and logout. It leaves one clearly synthetic sample request in the database used by the running app. Integration tests cover pagination, concurrent submissions, authorization, transaction rollback and actual API-process restart. CI runs both suites. Browser binaries are separate from `pnpm install`.
 
 ## Technology
 

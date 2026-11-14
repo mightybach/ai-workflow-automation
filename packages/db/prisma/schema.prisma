@@ -52,6 +52,18 @@ model User {
   updatedAt    DateTime     @updatedAt @db.Timestamptz(3)
   requests     Request[]
   auditEvents  AuditEvent[]
+  sessions     Session[]
+}
+
+model Session {
+  tokenHash String   @id @db.VarChar(64)
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Request {
@@ -64,6 +76,7 @@ model Request {
   workflows      Workflow[]
 
   @@unique([createdById, idempotencyKey])
+  @@index([createdAt, id])
 }
 
 model Workflow {

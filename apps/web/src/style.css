@@ -16,7 +16,7 @@ button:focus-visible { outline: 3px solid white; outline-offset: 4px; }
 .toolbar { margin: 24px 0; }
 .toolbar input { flex: 1; min-width: 140px; }
 label, dt { display: block; font-weight: 600; }
-input, textarea { display: block; width: 100%; border: 1px solid #647890; border-radius: 6px; background: #101b29; color: #e7eef5; padding: 12px; font: inherit; }
+input, textarea, select { display: block; width: 100%; border: 1px solid #647890; border-radius: 6px; background: #101b29; color: #e7eef5; padding: 12px; font: inherit; }
 input:focus-visible, textarea:focus-visible { outline: 3px solid #9aefd7; outline-offset: 2px; }
 form label { margin: 16px 0 8px; }
 fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
@@ -25,6 +25,8 @@ button.secondary { background: transparent; color: #e7eef5; border: 1px solid #6
 button.danger { background: #ffc4c4; color: #4b1212; }
 button:disabled { opacity: .55; cursor: not-allowed; }
 .table-scroll { width: 100%; overflow-x: auto; }
+.table-scroll table { min-width: 640px; }
+.row-actions button { white-space: nowrap; }
 table { border-collapse: collapse; width: 100%; text-align: left; }
 th, td { padding: 16px 12px; border-bottom: 1px solid #415268; vertical-align: top; }
 th { color: #c0ccda; font-size: .9rem; }
@@ -36,6 +38,9 @@ dd { margin: 8px 0 20px; white-space: pre-wrap; overflow-wrap: anywhere; color: 
 .error { color: #ffc4c4; }
 dialog { max-width: min(520px, calc(100vw - 32px)); color: #e7eef5; background: #182638; border: 1px solid #647890; border-radius: 16px; padding: 28px; overflow-wrap: anywhere; }
 dialog::backdrop { background: rgb(0 0 0 / 65%); }
+.session-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
+.toolbar select { width: auto; max-width: 100%; }
+li { margin: 12px 0; overflow-wrap: anywhere; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (max-width: 600px) { main { padding: 32px 16px; } section { padding: 18px; } th, td { padding: 12px 8px; } }
 

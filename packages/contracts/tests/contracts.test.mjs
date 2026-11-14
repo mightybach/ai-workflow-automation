@@ -6,7 +6,7 @@ import {
   CreateRequestResponseSchema, IdempotencyHeadersSchema, IdParamsSchema,
   MockOrderResponseSchema, MoneyAmountSchema, OrderStatusSchema, RequestDetailSchema,
   RequestListQuerySchema, RequestListResponseSchema, RoleSchema, UserResponseSchema,
-  WorkflowCategorySchema, WorkflowResponseSchema, WorkflowStatusSchema,
+  WorkflowCategorySchema, WorkflowResponseSchema, WorkflowStatusSchema, LoginBodySchema, SessionResponseSchema,
 } from '../dist/index.js';
 
 const id = 'c27a63c1-2459-47bb-8d5c-f3fc15bd1ddd';
@@ -15,6 +15,14 @@ const timestamp = '2026-11-13T02:00:00.000Z';
 const summary = { id: runId, category: null, status: 'PENDING', version: 0 };
 const request = { id, createdById: id, createdAt: timestamp, workflows: [summary] };
 const user = { id, email: 'reviewer@flowpilot.test', role: 'REVIEWER', isActive: true, createdAt: timestamp, updatedAt: timestamp };
+
+test('login normalizes email, preserves passwords and rejects claimed roles', () => {
+  assert.deepEqual(LoginBodySchema.parse({ email: '  CLIENT@flowpilot.test ', password: ' keep spaces ' }),
+    { email: 'client@flowpilot.test', password: ' keep spaces ' });
+  assert.equal(LoginBodySchema.safeParse({ email: user.email, password: 'test', role: 'ADMIN' }).success, false);
+  assert.equal(LoginBodySchema.safeParse({ email: user.email, password: '' }).success, false);
+  assert.equal(SessionResponseSchema.safeParse({ user: { ...user, passwordHash: 'secret' } }).success, false);
+});
 
 test('creation preserves original evidence but rejects blank, oversized and non-text messages', () => {
   const rawText = '  Synthetic request\n';
