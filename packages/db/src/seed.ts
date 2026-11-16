@@ -1,5 +1,6 @@
 import { createDatabaseClient } from './index.js';
 import { hashPassword } from './password.js';
+import { seedBusinessSetup } from './business-seed.js';
 
 if (process.env.NODE_ENV === 'production' || process.env.DEMO_AUTH_ENABLED !== 'true') {
   throw new Error('Demo seeds require DEMO_AUTH_ENABLED=true outside production.');
@@ -30,6 +31,7 @@ try {
       await tx.mockOrder.upsert({ where: { orderNumber: order.orderNumber }, create: order, update: {} });
     }
   });
-  console.info('Synthetic users and orders seeded. Existing passwords and records were retained.');
+  const setup = await seedBusinessSetup(db, passwordHash, new Date(), process.env.SEED_START_DATE);
+  console.info('Synthetic users/orders retained; salon setup seeded from ' + setup.startDate + ' for ' + setup.days + ' calendar days. Existing inventory states were retained.');
 } finally { await db.$disconnect(); }
 

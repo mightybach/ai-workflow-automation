@@ -3,7 +3,7 @@ import { LoginBodySchema, SessionResponseSchema, type UserResponse } from '@flow
 import { apiRequest, errorMessage } from '../../lib/api';
 
 export function LoginForm({ onSignIn }: { onSignIn(user: UserResponse): void }) {
-  const [email, setEmail] = useState('client@flowpilot.test');
+  const [email, setEmail] = useState('owner@flowpilot.test');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -22,7 +22,7 @@ export function LoginForm({ onSignIn }: { onSignIn(user: UserResponse): void }) 
   }
   return <section aria-labelledby="login-heading">
     <span className="badge">Local demo</span><h2 id="login-heading">Sign in</h2>
-    <p>Use a seeded demo account. All requests must contain made-up details only.</p>
+    <p>Use owner@flowpilot.test or staff@flowpilot.test with the seeded demo password. All data is synthetic.</p>
     <form onSubmit={(event) => { void submit(event); }}>
       <fieldset disabled={busy}>
         <legend className="sr-only">Demo credentials</legend>

@@ -28,7 +28,7 @@ jobs:
       - run: pnpm test:integration
       - run: pnpm --filter @flowpilot/db exec prisma migrate status --config prisma7.config.ts
       - run: pnpm --filter @flowpilot/web exec playwright install --with-deps chromium
-      - name: Check authenticated request flow in the browser
+      - name: Check business setup and retained request flow in the browser
         run: |
           pnpm dev > "$RUNNER_TEMP/flowpilot-dev.log" 2>&1 &
           server_pid=$!

@@ -1,4 +1,23 @@
-# Phase 1 API contracts
+# API contracts
+
+## Booking Phase 1 — implemented read-only business setup
+
+All paths use `/api/v1` and the existing traceable error envelope. The authenticated user must have an active business membership and active business; legacy `User.role` alone grants no business access. Both OWNER and STAFF can inspect the setup. The current membership model supports one business per user; the server derives it, rather than accepting a browser-provided businessId.
+
+| Method | Path | Input | Response |
+| --- | --- | --- | --- |
+| GET | /admin/business | No query fields | BusinessSetupResponseSchema: business, membership role and business-local today |
+| GET | /admin/staff | AdminListQuerySchema | StaffListResponseSchema: items and pagination |
+| GET | /admin/services | AdminListQuerySchema | ServiceListResponseSchema: items and pagination |
+| GET | /admin/slots | AdminSlotQuerySchema | AdminSlotListResponseSchema: items, pagination, local date and timezone |
+
+Staff/service pagination defaults to page 1 / size 10, maximum size 50. Slot queries require a real YYYY-MM-DD calendar date between 2000 and 2100; optional staffId and state (AVAILABLE, RESERVED, BLOCKED) filters use the same limits. The date is interpreted in the authenticated business time zone, not UTC. An unknown or other-business staffId returns the same 404. Unknown fields (including businessId) are rejected. Lists and counts are scoped identically and read in a consistent snapshot. Sort staff by displayName/id, services by name/id and slots by startAt/staffId/id.
+
+BusinessDateSchema validates calendar dates; BusinessTimezoneSchema validates supported time-zone identifiers. Slot instants are UTC ISO strings and duration is exactly 30 minutes. Service DTOs use literal durationMinutes=30. No schedule, service or staff mutation routes, customer availability, booking confirmation, customer chat or AI contracts are implemented in this phase.
+
+Audit DTOs now permit a null runId only with a business/entity subject. Legacy workflow events remain supported. No audit mutation or generic audit-read endpoint is introduced.
+
+## Legacy request-management contracts — retained
 
 These are shared Zod schemas and inferred TypeScript types for the implemented Phase 1 HTTP boundary. Route handlers separately enforce authentication, permissions and transactional persistence. Validation alone does not grant authorization, execute workflows or replace database constraints.
 

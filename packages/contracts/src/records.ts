@@ -6,7 +6,10 @@ import { ActorTypeSchema, OrderStatusSchema } from './enums.js';
 // metadata must be redacted by the server before applying this schema.
 export const AuditEventResponseSchema = z.object({
   id: IdSchema,
-  runId: IdSchema,
+  runId: IdSchema.nullable(),
+  businessId: IdSchema.nullable().default(null),
+  entityType: z.string().min(1).max(100).nullable().default(null),
+  entityId: IdSchema.nullable().default(null),
   actorType: ActorTypeSchema,
   actorId: IdSchema.nullable(),
   eventType: z.string().min(1).max(100),
@@ -14,6 +17,9 @@ export const AuditEventResponseSchema = z.object({
   metadata: z.record(z.string(), z.json()).nullable(),
   createdAt: TimestampSchema,
 }).strict().superRefine((event, context) => {
+  if (event.runId === null && (!event.businessId || !event.entityType || !event.entityId)) {
+    context.addIssue({ code: 'custom', path: ['businessId'], message: 'A standalone event needs a business and entity subject.' });
+  }
   if ((event.actorType === 'USER') !== (event.actorId !== null)) {
     context.addIssue({ code: 'custom', path: ['actorId'], message: 'Only USER events must reference a user.' });
   }

@@ -29,6 +29,7 @@ async function login(email) {
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('button', { name: 'Legacy requests', exact: true }).click();
   await page.getByRole('heading', { name: 'Requests', exact: true }).waitFor();
 }
 try {
@@ -72,6 +73,7 @@ try {
   assert.equal(await page.getByRole('button', { name: /^Edit |^Delete / }).count(), 0);
 
   await page.reload();
+  await page.getByRole('button', { name: 'Legacy requests', exact: true }).click();
   await page.getByRole('heading', { name: 'Requests', exact: true }).waitFor();
   await page.getByLabel('Search requests', { exact: true }).fill(tag);
   await page.getByRole('button', { name: 'View request ' + requestId, exact: true }).click();

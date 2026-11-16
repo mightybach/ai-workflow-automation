@@ -17,6 +17,7 @@ services:
       retries: 12
       start_period: 10s
   rabbitmq:
+    profiles: ["automation"]
     image: rabbitmq:4.2.9-management-alpine
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-flowpilot}

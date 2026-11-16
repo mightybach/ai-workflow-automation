@@ -20,7 +20,8 @@
     "db:migrate": "pnpm --filter @flowpilot/db migrate:dev",
     "db:deploy": "pnpm --filter @flowpilot/db migrate:deploy",
     "db:studio": "pnpm --filter @flowpilot/db studio",
-    "infra:up": "docker compose up -d --wait postgres rabbitmq",
+    "infra:up": "docker compose up -d --wait postgres",
+    "infra:automation": "docker compose --profile automation up -d --wait postgres rabbitmq",
     "infra:down": "docker compose down",
     "infra:config": "docker compose config --quiet"
   },

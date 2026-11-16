@@ -41,6 +41,20 @@ dialog::backdrop { background: rgb(0 0 0 / 65%); }
 .session-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
 .toolbar select { width: auto; max-width: 100%; }
 li { margin: 12px 0; overflow-wrap: anywhere; }
+.workspace-tabs { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0; }
+.setup-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.setup-grid section { min-width: 0; }
+.setup-list { list-style: none; padding: 0; }
+.setup-list li { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-bottom: 1px solid #415268; }
+.table-scroll table.slot-table { min-width: 440px; }
+@media (max-width: 600px) { .setup-grid { grid-template-columns: 1fr; gap: 0; } }
+@media (max-width: 600px) {
+  .table-scroll table.slot-table { min-width: 0; table-layout: fixed; font-size: .85rem; }
+  .slot-table th:first-child { width: 22%; }
+  .slot-table th:nth-child(2) { width: 49%; }
+  .slot-table th:last-child { width: 29%; }
+  .slot-table .badge { font-size: .75rem; }
+}
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (max-width: 600px) { main { padding: 32px 16px; } section { padding: 18px; } th, td { padding: 12px 8px; } }
 

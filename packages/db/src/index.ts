@@ -3,6 +3,8 @@ import { PrismaClient } from './generated/prisma/client.js';
 
 export { Prisma, PrismaClient } from './generated/prisma/client.js';
 export { hashPassword, verifyPassword } from './password.js';
+export { businessDate, businessDayBounds, localBusinessInstant, addCalendarDays } from './business-time.js';
+export { seedBusinessSetup, demoSlotTimes, DEMO_BUSINESS_SLUG } from './business-seed.js';
 
 // Creating the client does not execute a query or apply schema changes.
 // The caller supplies DATABASE_URL and owns the client's $disconnect lifecycle.

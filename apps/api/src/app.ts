@@ -7,8 +7,9 @@ import { HealthResponseSchema, ApiErrorSchema } from '@flowpilot/contracts';
 import { ApiError } from './errors.js';
 import { authRoutes } from './auth.js';
 import { requestRoutes } from './request-routes.js';
+import { businessRoutes } from './business-routes.js';
 
-export function buildApp(options: { logger?: boolean; db?: PrismaClient; demoAuthEnabled?: boolean; webOrigin?: string } = {}) {
+export function buildApp(options: { logger?: boolean; db?: PrismaClient; demoAuthEnabled?: boolean; webOrigin?: string; clock?: () => Date } = {}) {
   const app = Fastify({
     bodyLimit: 64 * 1024, requestIdHeader: false, genReqId: () => randomUUID(),
     logger: options.logger ? {
@@ -54,6 +55,7 @@ export function buildApp(options: { logger?: boolean; db?: PrismaClient; demoAut
       });
       authRoutes(api, db, options.demoAuthEnabled ?? false);
       requestRoutes(api, db);
+      businessRoutes(api, db, options.clock ?? (() => new Date()));
     });
   }
   return app;

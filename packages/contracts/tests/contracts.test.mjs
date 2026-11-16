@@ -7,6 +7,7 @@ import {
   MockOrderResponseSchema, MoneyAmountSchema, OrderStatusSchema, RequestDetailSchema,
   RequestListQuerySchema, RequestListResponseSchema, RoleSchema, UserResponseSchema,
   WorkflowCategorySchema, WorkflowResponseSchema, WorkflowStatusSchema, LoginBodySchema, SessionResponseSchema,
+  AdminSlotQuerySchema, BusinessDateSchema, BusinessRoleSchema, BusinessTimezoneSchema, SlotStateSchema, AvailabilitySlotSchema,
 } from '../dist/index.js';
 
 const id = 'c27a63c1-2459-47bb-8d5c-f3fc15bd1ddd';
@@ -119,6 +120,7 @@ test('shared enums match the approved Prisma schema without importing server cod
   for (const [name, contract] of [
     ['Role', RoleSchema], ['Category', WorkflowCategorySchema], ['Status', WorkflowStatusSchema],
     ['ActorType', ActorTypeSchema], ['OrderStatus', OrderStatusSchema],
+    ['BusinessRole', BusinessRoleSchema], ['SlotState', SlotStateSchema],
   ]) {
     const start = prisma.indexOf('enum ' + name + ' {');
     assert.notEqual(start, -1, name + ' must exist in Prisma');
@@ -126,5 +128,26 @@ test('shared enums match the approved Prisma schema without importing server cod
     const values = body.split('\n').map((line) => line.replace(/\/\/.*$/, '').trim()).filter(Boolean);
     assert.deepEqual([...contract.options].sort(), values.sort(), name + ' enum drift');
   }
+});
+
+test('business inspection rejects invalid dates, foreign scope overrides and unsupported filters', () => {
+  assert.equal(BusinessDateSchema.safeParse('2028-02-29').success, true);
+  for (const date of ['2026-02-30', '2026-13-01', '2026-2-03', '1900-01-01', '2101-01-01']) {
+    assert.equal(BusinessDateSchema.safeParse(date).success, false);
+  }
+  assert.deepEqual(AdminSlotQuerySchema.parse({ date: '2026-11-16' }), { date: '2026-11-16', page: 1, pageSize: 10 });
+  for (const query of [{}, { date: '2026-11-16', businessId: id }, { date: '2026-11-16', pageSize: '100' }, { date: '2026-11-16', state: 'BOOKED' }]) {
+    assert.equal(AdminSlotQuerySchema.safeParse(query).success, false);
+  }
+  assert.equal(BusinessTimezoneSchema.safeParse('Australia/Brisbane').success, true);
+  assert.equal(BusinessTimezoneSchema.safeParse('Not/A_Timezone').success, false);
+});
+test('slot DTOs reject durations outside the fixed inventory and audit DTOs support business subjects', () => {
+  const slot = { id, businessId: id, staffId: runId, startAt: '2026-11-15T23:00:00.000Z', endAt: '2026-11-15T23:30:00.000Z', state: 'AVAILABLE' };
+  assert.equal(AvailabilitySlotSchema.safeParse(slot).success, true);
+  assert.equal(AvailabilitySlotSchema.safeParse({ ...slot, endAt: '2026-11-16T00:00:00.000Z' }).success, false);
+  const event = { id, runId: null, businessId: id, entityType: 'Business', entityId: id, actorType: 'SYSTEM', actorId: null, eventType: 'SETUP', traceId: 'trace', metadata: null, createdAt: timestamp };
+  assert.equal(AuditEventResponseSchema.safeParse(event).success, true);
+  assert.equal(AuditEventResponseSchema.safeParse({ ...event, businessId: null }).success, false);
 });
 

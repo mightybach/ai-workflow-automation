@@ -8,8 +8,8 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node --env-file-if-exists=../../.env dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test src/app.test.ts",
-    "test:integration": "node --env-file-if-exists=../../.env --import tsx --test src/phase1.integration.test.ts"
+    "test": "tsx --test src/app.test.ts src/business-time.test.ts",
+    "test:integration": "node --env-file-if-exists=../../.env --import tsx --test src/phase1.integration.test.ts src/business.integration.test.ts"
   },
   "dependencies": {
     "@flowpilot/contracts": "workspace:*",
