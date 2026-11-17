@@ -9,7 +9,7 @@
     "start": "node --env-file-if-exists=../../.env dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test src/app.test.ts src/business-time.test.ts",
-    "test:integration": "node --env-file-if-exists=../../.env --import tsx --test src/phase1.integration.test.ts src/business.integration.test.ts"
+    "test:integration": "node --env-file-if-exists=../../.env --import tsx --test src/phase1.integration.test.ts src/business.integration.test.ts src/booking-schema.integration.test.ts src/customer.integration.test.ts src/booking-proposal.integration.test.ts src/booking.integration.test.ts src/booking-http.integration.test.ts"
   },
   "dependencies": {
     "@flowpilot/contracts": "workspace:*",

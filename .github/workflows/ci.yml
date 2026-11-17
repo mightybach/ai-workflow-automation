@@ -25,7 +25,8 @@ jobs:
       - run: pnpm infra:up
       - run: pnpm db:deploy
       - run: pnpm db:seed
-      - run: pnpm test:integration
+      - name: Check booking concurrency, rollback, ownership and HTTP restart recovery
+        run: pnpm test:integration
       - run: pnpm --filter @flowpilot/db exec prisma migrate status --config prisma7.config.ts
       - run: pnpm --filter @flowpilot/web exec playwright install --with-deps chromium
       - name: Check business setup and retained request flow in the browser

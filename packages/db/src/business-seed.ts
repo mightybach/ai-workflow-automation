@@ -22,7 +22,7 @@ export async function seedBusinessSetup(db: PrismaClient, passwordHash: string, 
   return db.$transaction(async (tx) => {
     const business = await tx.business.upsert({
       where: { slug: DEMO_BUSINESS_SLUG },
-      create: { slug: DEMO_BUSINESS_SLUG, name: 'FlowPilot Demo Salon', timezone: 'Australia/Brisbane' },
+      create: { slug: DEMO_BUSINESS_SLUG, name: 'FlowPilot Demo Salon', timezone: 'Australia/Brisbane', maxBookingDurationMinutes: 120 },
       update: {},
     });
     if (business.timezone !== 'Australia/Brisbane') throw new Error('Demo salon timezone changed; review its seed schedule before seeding.');

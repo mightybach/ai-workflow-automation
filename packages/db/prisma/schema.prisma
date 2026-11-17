@@ -1,5 +1,4 @@
-// Define your application models and relationships here.
-// No tables are created until you add models and apply a migration.
+// PostgreSQL checks, partial indexes and deferred triggers also live in migrations.
 generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
@@ -157,18 +156,23 @@ enum SlotState {
 }
 
 model Business {
-  id          String               @id @default(uuid()) @db.Uuid
-  slug        String               @unique
-  name        String
-  timezone    String               @default("Australia/Brisbane")
-  active      Boolean              @default(true)
-  createdAt   DateTime             @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime             @updatedAt @db.Timestamptz(3)
-  memberships BusinessMembership[]
-  staff       Staff[]
-  services    Service[]
-  slots       AvailabilitySlot[]
-  auditEvents AuditEvent[]
+  id                        String               @id @default(uuid()) @db.Uuid
+  slug                      String               @unique
+  name                      String
+  timezone                  String               @default("Australia/Brisbane")
+  active                    Boolean              @default(true)
+  createdAt                 DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime             @updatedAt @db.Timestamptz(3)
+  memberships               BusinessMembership[]
+  staff                     Staff[]
+  services                  Service[]
+  slots                     AvailabilitySlot[]
+  auditEvents               AuditEvent[]
+  maxBookingDurationMinutes Int                  @default(120)
+  customerSessions          CustomerSession[]
+  bookingProposals          BookingProposal[]
+  bookings                  Booking[]
+  bookingActions            BookingAction[]
 }
 
 // One business per dashboard user in Phase 1. Legacy User.role is unchanged.
@@ -186,30 +190,32 @@ model BusinessMembership {
 }
 
 model Staff {
-  id          String             @id @default(uuid()) @db.Uuid
-  businessId  String             @db.Uuid
-  business    Business           @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  slug        String
-  displayName String
-  active      Boolean            @default(true)
-  createdAt   DateTime           @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime           @updatedAt @db.Timestamptz(3)
-  slots       AvailabilitySlot[]
+  id               String             @id @default(uuid()) @db.Uuid
+  businessId       String             @db.Uuid
+  business         Business           @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  slug             String
+  displayName      String
+  active           Boolean            @default(true)
+  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime           @updatedAt @db.Timestamptz(3)
+  slots            AvailabilitySlot[]
+  bookingProposals BookingProposal[]
 
   @@unique([businessId, id])
   @@unique([businessId, slug])
 }
 
 model Service {
-  id              String   @id @default(uuid()) @db.Uuid
-  businessId      String   @db.Uuid
-  business        Business @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  slug            String
-  name            String
-  durationMinutes Int      @default(30)
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+  id               String            @id @default(uuid()) @db.Uuid
+  businessId       String            @db.Uuid
+  business         Business          @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  slug             String
+  name             String
+  durationMinutes  Int               @default(30)
+  active           Boolean           @default(true)
+  createdAt        DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime          @updatedAt @db.Timestamptz(3)
+  bookingProposals BookingProposal[]
 
   @@unique([businessId, id])
   @@unique([businessId, slug])
@@ -217,15 +223,132 @@ model Service {
 
 // Fixed 30-minute inventory only, not an appointment or a reservation API.
 model AvailabilitySlot {
-  id         String    @id @default(uuid()) @db.Uuid
-  businessId String    @db.Uuid
-  business   Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  staffId    String    @db.Uuid
-  staff      Staff     @relation(fields: [businessId, staffId], references: [businessId, id], onDelete: Restrict)
-  startAt    DateTime  @db.Timestamptz(3)
-  endAt      DateTime  @db.Timestamptz(3)
-  state      SlotState @default(AVAILABLE)
+  id               String            @id @default(uuid()) @db.Uuid
+  businessId       String            @db.Uuid
+  business         Business          @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  staffId          String            @db.Uuid
+  staff            Staff             @relation(fields: [businessId, staffId], references: [businessId, id], onDelete: Restrict)
+  startAt          DateTime          @db.Timestamptz(3)
+  endAt            DateTime          @db.Timestamptz(3)
+  state            SlotState         @default(AVAILABLE)
+  bookingProposals BookingProposal[]
+  bookingSlots     BookingSlot[]
 
   @@unique([staffId, startAt])
+  @@unique([businessId, staffId, id])
   @@index([businessId, startAt, staffId])
+}
+
+// Separate from staff login; ownership rows survive token expiry/revocation.
+model CustomerSession {
+  id         String            @id @default(uuid()) @db.Uuid
+  businessId String            @db.Uuid
+  business   Business          @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  tokenHash  String            @unique @db.VarChar(64)
+  createdAt  DateTime          @default(now()) @db.Timestamptz(3)
+  expiresAt  DateTime          @db.Timestamptz(3)
+  revokedAt  DateTime?         @db.Timestamptz(3)
+  proposals  BookingProposal[]
+  bookings   Booking[]
+  actions    BookingAction[]
+
+  @@unique([businessId, id])
+  @@index([expiresAt])
+}
+
+// Immutable selection snapshot; a unique Booking consumes this proposal.
+model BookingProposal {
+  id              String           @id @default(uuid()) @db.Uuid
+  businessId      String           @db.Uuid
+  business        Business         @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  sessionId       String           @db.Uuid
+  session         CustomerSession  @relation(fields: [businessId, sessionId], references: [businessId, id], onDelete: Restrict)
+  serviceId       String           @db.Uuid
+  service         Service          @relation(fields: [businessId, serviceId], references: [businessId, id], onDelete: Restrict)
+  staffId         String           @db.Uuid
+  staff           Staff            @relation(fields: [businessId, staffId], references: [businessId, id], onDelete: Restrict)
+  slotId          String           @db.Uuid
+  slot            AvailabilitySlot @relation(fields: [businessId, staffId, slotId], references: [businessId, staffId, id], onDelete: Restrict)
+  durationMinutes Int
+  startAt         DateTime         @db.Timestamptz(3)
+  endAt           DateTime         @db.Timestamptz(3)
+  timezone        String           @db.VarChar(100)
+  serviceName     String           @db.VarChar(160)
+  staffName       String           @db.VarChar(120)
+  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
+  expiresAt       DateTime         @db.Timestamptz(3)
+  booking         Booking?
+  actions         BookingAction[]
+
+  @@unique([businessId, sessionId, id])
+  @@index([expiresAt])
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+enum BookingOperation {
+  PROPOSE
+  CONFIRM
+}
+
+model Booking {
+  id            String          @id @default(uuid()) @db.Uuid
+  businessId    String          @db.Uuid
+  business      Business        @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  sessionId     String          @db.Uuid
+  session       CustomerSession @relation(fields: [businessId, sessionId], references: [businessId, id], onDelete: Restrict)
+  proposalId    String          @unique @db.Uuid
+  proposal      BookingProposal @relation(fields: [businessId, sessionId, proposalId], references: [businessId, sessionId, id], onDelete: Restrict)
+  reference     String          @unique @db.VarChar(64)
+  status        BookingStatus   @default(CONFIRMED)
+  customerName  String          @db.VarChar(120)
+  customerEmail String          @db.VarChar(254)
+  createdAt     DateTime        @default(now()) @db.Timestamptz(3)
+  cancelledAt   DateTime?       @db.Timestamptz(3)
+  slots         BookingSlot[]
+  actions       BookingAction[]
+
+  @@unique([businessId, id])
+  @@unique([businessId, sessionId, proposalId, id])
+  @@unique([businessId, sessionId, proposalId])
+  @@index([businessId, createdAt, id])
+}
+
+// Partial unique index prevents two unreleased claims on the same base slot.
+model BookingSlot {
+  bookingId  String           @db.Uuid
+  businessId String           @db.Uuid
+  booking    Booking          @relation(fields: [businessId, bookingId], references: [businessId, id], onDelete: Restrict)
+  staffId    String           @db.Uuid
+  slotId     String           @db.Uuid
+  slot       AvailabilitySlot @relation(fields: [businessId, staffId, slotId], references: [businessId, staffId, id], onDelete: Restrict)
+  releasedAt DateTime?        @db.Timestamptz(3)
+
+  @@id([bookingId, slotId])
+  @@index([slotId])
+}
+
+// Successful operation DTO snapshots only; never store raw tokens here.
+model BookingAction {
+  id                 String           @id @default(uuid()) @db.Uuid
+  businessId         String           @db.Uuid
+  business           Business         @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  sessionId          String           @db.Uuid
+  session            CustomerSession  @relation(fields: [businessId, sessionId], references: [businessId, id], onDelete: Restrict)
+  operation          BookingOperation
+  idempotencyKey     String           @db.VarChar(128)
+  requestFingerprint String           @db.VarChar(64)
+  proposalId         String           @db.Uuid
+  proposal           BookingProposal  @relation(fields: [businessId, sessionId, proposalId], references: [businessId, sessionId, id], onDelete: Restrict)
+  bookingId          String?          @db.Uuid
+  booking            Booking?         @relation(fields: [businessId, sessionId, proposalId, bookingId], references: [businessId, sessionId, proposalId, id], onDelete: Restrict)
+  response           Json             @db.JsonB
+  createdAt          DateTime         @default(now()) @db.Timestamptz(3)
+
+  @@unique([businessId, sessionId, operation, idempotencyKey])
+  @@index([proposalId])
+  @@index([bookingId])
 }

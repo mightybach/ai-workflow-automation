@@ -33,11 +33,11 @@ try {
   await page.getByText('Alex', { exact: true }).first().waitFor();
   await page.getByText('Haircut', { exact: true }).waitFor();
   const dateInput = page.getByLabel('Date', { exact: true });
-  let date = process.env.SEED_START_DATE || await dateInput.inputValue();
+  let date = process.env.SEED_START_DATE || (await dateInput.inputValue()).split('-').reverse().join('-');
   const parsed = new Date(date + 'T00:00:00Z');
   while ([0, 6].includes(parsed.getUTCDay())) parsed.setUTCDate(parsed.getUTCDate() + 1);
   date = parsed.toISOString().slice(0, 10);
-  await dateInput.fill(date);
+  await dateInput.fill(date.split('-').reverse().join('-'));
   await page.getByRole('table', { name: 'Staff slot inventory', exact: true }).waitFor();
   await page.getByRole('navigation', { name: 'slots pages', exact: true }).getByText(/28 slots/).waitFor();
   await page.getByRole('button', { name: 'Next slots page', exact: true }).click();
@@ -64,7 +64,7 @@ try {
 
   await page.reload();
   await page.getByRole('heading', { name: 'FlowPilot Demo Salon', exact: true }).waitFor();
-  await dateInput.fill(date);
+  await dateInput.fill(date.split('-').reverse().join('-'));
   await page.getByRole('table', { name: 'Staff slot inventory', exact: true }).waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);

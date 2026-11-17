@@ -70,7 +70,7 @@ function App() {
         <button onClick={() => { setStatus('Checking API connection…'); setAttempt(attempt + 1); }}>
           Check connection
         </button>
-        <p className="note">Synthetic data only. Booking confirmation, customer chat and AI are planned.</p>
+        <p className="note">Synthetic data only. Customer web/chat UI and AI are planned.</p>
       </section>
     </main>
   );

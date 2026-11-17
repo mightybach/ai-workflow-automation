@@ -6,6 +6,9 @@ import {
 } from '@flowpilot/contracts';
 import { apiRequest, errorMessage } from '../../lib/api';
 
+const displayDate = (iso: string) => iso.split('-').reverse().join('-');
+const apiDate = (display: string) => /^\d{2}-\d{2}-\d{4}$/.test(display) ? displayDate(display) : '';
+
 function Pages({ name, page, total, size, disabled, onPage }: {
   name: string; page: number; total: number; size: number; disabled: boolean; onPage(page: number): void;
 }) {
@@ -38,7 +41,7 @@ export function BusinessDashboard() {
     const controller = new AbortController();
     setLoading(true); setError('');
     void apiRequest('/admin/business', BusinessSetupResponseSchema, { signal: controller.signal })
-      .then((value) => { if (!controller.signal.aborted) { setSetup(value); setDate((current) => current || value.today); } })
+      .then((value) => { if (!controller.signal.aborted) { setSetup(value); setDate((current) => current || displayDate(value.today)); } })
       .catch((cause: unknown) => { if (!controller.signal.aborted) { setSetup(null); setError(errorMessage(cause)); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -61,8 +64,8 @@ export function BusinessDashboard() {
 
   useEffect(() => {
     if (!setup) return;
-    const parsed = BusinessDateSchema.safeParse(date);
-    if (!parsed.success) { setSlots(null); setSlotError('Choose a valid date.'); setSlotsLoading(false); return; }
+    const parsed = BusinessDateSchema.safeParse(apiDate(date));
+    if (!parsed.success) { setSlots(null); setSlotError('Enter a valid date as dd-mm-yyyy.'); setSlotsLoading(false); return; }
     const controller = new AbortController();
     setSlotsLoading(true); setSlotError('');
     const query = new URLSearchParams({ date: parsed.data, page: String(page), pageSize: '20' });
@@ -85,7 +88,7 @@ export function BusinessDashboard() {
         <span className="badge">Synthetic salon · {setup.membership.role}</span>
         <h2 id="business-name">{setup.business.name}</h2>
         <p>Time zone: <strong>{setup.business.timezone}</strong></p>
-        <p className="note">Inspect staff, services and slot inventory. Customer booking is not enabled yet.</p>
+        <p className="note">Inspect staff, services and slot inventory. This dashboard is read-only.</p>
       </section>
       {listError && <p role="alert" className="error">{listError}</p>}
       {listsLoading ? <p role="status">Loading staff and services…</p> : <div className="setup-grid">
@@ -111,7 +114,8 @@ export function BusinessDashboard() {
         <p className="note">Times below use {setup.business.timezone}. Inventory is read-only and is not a booking guarantee.</p>
         <div className="toolbar">
           <label htmlFor="slot-date">Date</label>
-          <input id="slot-date" type="date" min="2000-01-01" max="2100-12-31" value={date} onChange={(event) => { setDate(event.target.value); setPage(1); }} />
+          <input id="slot-date" type="text" inputMode="numeric" placeholder="dd-mm-yyyy" aria-describedby="slot-date-format" maxLength={10} value={date} onChange={(event) => { setDate(event.target.value); setPage(1); }} />
+          <span id="slot-date-format" className="note">dd-mm-yyyy</span>
           <label htmlFor="slot-staff">Staff member</label>
           <select id="slot-staff" value={staffId} onChange={(event) => { setStaffId(event.target.value); setPage(1); }}>
             <option value="">All staff</option>

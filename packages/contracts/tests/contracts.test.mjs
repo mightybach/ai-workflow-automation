@@ -151,3 +151,76 @@ test('slot DTOs reject durations outside the fixed inventory and audit DTOs supp
   assert.equal(AuditEventResponseSchema.safeParse({ ...event, businessId: null }).success, false);
 });
 
+
+// Phase 2 contracts are specifications; no booking endpoints exist yet.
+const bookingContracts = await import('../dist/index.js');
+const selection = { durationMinutes: 30, businessId: id, slotId: id, serviceId: id, staffId: runId,
+  serviceName: 'Haircut', staffName: 'Alex', startAt: '2026-11-18T23:00:00.000Z',
+  endAt: '2026-11-18T23:30:00.000Z', timezone: 'Australia/Brisbane' };
+const customer = { name: 'Synthetic Customer', email: 'demo@example.test' };
+
+test('customer session bootstrap accepts a public slug without exposing token or caller authority', () => {
+  const { CreateCustomerSessionBodySchema: body, CustomerSessionResponseSchema: response } = bookingContracts;
+  assert.deepEqual(body.parse({ businessSlug: 'demo-salon' }), { businessSlug: 'demo-salon' });
+  for (const value of [{ businessSlug: '../salon' }, { businessSlug: 'demo-salon', role: 'OWNER' }, { businessId: id }]) {
+    assert.equal(body.safeParse(value).success, false);
+  }
+  const publicSession = { businessId: id, businessName: 'Demo salon', timezone: 'Australia/Brisbane', today: '2026-11-19', maxBookingDurationMinutes: 120, expiresAt: timestamp };
+  assert.equal(response.safeParse(publicSession).success, true);
+  assert.equal(response.safeParse({ ...publicSession, token: 'secret' }).success, false);
+});
+
+test('customer availability requires date/service and disallows scope and inventory-state overrides', () => {
+  const schema = bookingContracts.CustomerAvailabilityQuerySchema;
+  assert.deepEqual(schema.parse({ date: '2026-11-19', durationMinutes: 30, serviceId: id }), { date: '2026-11-19', durationMinutes: 30, serviceId: id, page: 1, pageSize: 10 });
+  for (const patch of [{ businessId: id }, { state: 'RESERVED' }, { date: '2026-02-30' }, { pageSize: '51' }, { serviceId: undefined }]) {
+    assert.equal(schema.safeParse({ date: '2026-11-19', durationMinutes: 30, serviceId: id, ...patch }).success, false);
+  }
+  assert.equal(bookingContracts.CustomerAvailableSlotSchema.safeParse(selection).success, true);
+  for (const patch of [{ endAt: '2026-11-19T00:00:00.000Z' }, { startAt: '2026-11-18T23:01:00.000Z', endAt: '2026-11-18T23:31:00.000Z' }, { state: 'AVAILABLE' }]) {
+    assert.equal(bookingContracts.CustomerAvailableSlotSchema.safeParse({ ...selection, ...patch }).success, false);
+  }
+});
+
+test('proposal and confirmation inputs reject claimed consent and changed selection', () => {
+  const proposal = { slotId: id, serviceId: id, durationMinutes: 30 };
+  assert.deepEqual(bookingContracts.CreateBookingProposalBodySchema.parse(proposal), proposal);
+  const body = { proposalId: id, customer };
+  assert.deepEqual(bookingContracts.ConfirmBookingBodySchema.parse(body), body);
+  for (const patch of [{ confirmed: true }, { businessId: id }, { slotId: runId }, { serviceId: runId }, { status: 'CONFIRMED' }, { sessionId: id }]) {
+    assert.equal(bookingContracts.ConfirmBookingBodySchema.safeParse({ ...body, ...patch }).success, false);
+  }
+  assert.equal(bookingContracts.ConfirmBookingBodySchema.safeParse({ ...body, customer: { ...customer, email: 'real@example.com' } }).success, false);
+  assert.equal(bookingContracts.ConfirmBookingBodySchema.safeParse({ ...body, customer: { ...customer, name: '  ' } }).success, false);
+  assert.deepEqual(bookingContracts.SyntheticCustomerSchema.parse({ name: ' Demo ', email: ' DEMO@EXAMPLE.TEST ' }), { name: 'Demo', email: 'demo@example.test' });
+});
+
+test('proposal and booking responses bound timestamps and omit private persistence fields', () => {
+  const proposal = { ...selection, id, createdAt: timestamp, expiresAt: '2026-11-13T02:05:00.000Z' };
+  assert.equal(bookingContracts.BookingProposalResponseSchema.safeParse(proposal).success, true);
+  assert.equal(bookingContracts.BookingProposalResponseSchema.safeParse({ ...proposal, expiresAt: timestamp }).success, false);
+  const booking = { ...selection, id, reference: 'FP-DEMO-001', status: 'CONFIRMED', customer, createdAt: timestamp };
+  assert.equal(bookingContracts.BookingResponseSchema.safeParse(booking).success, true);
+  for (const patch of [{ tokenHash: 'secret' }, { idempotencyKey: 'secret' }, { status: 'CANCELLED' }]) {
+    assert.equal(bookingContracts.BookingResponseSchema.safeParse({ ...booking, ...patch }).success, false);
+  }
+  assert.equal(bookingContracts.BookingErrorResponseSchema.safeParse({ code: 'SLOT_UNAVAILABLE', message: 'Choose another slot.', traceId: 'trace' }).success, true);
+});
+
+test('multi-slot appointment contracts accept increments and bind end time to requested duration', () => {
+  const { BookingDurationMinutesSchema, CreateBookingProposalBodySchema, CustomerAvailableSlotSchema, CustomerAvailabilityQuerySchema } = bookingContracts;
+  for (const durationMinutes of [30, 60, 90, 120, 1440]) {
+    assert.equal(BookingDurationMinutesSchema.safeParse(durationMinutes).success, true);
+    assert.equal(CreateBookingProposalBodySchema.safeParse({ slotId: id, serviceId: id, durationMinutes }).success, true);
+    assert.equal(CustomerAvailableSlotSchema.safeParse({ ...selection, durationMinutes,
+      endAt: new Date(Date.parse(selection.startAt) + durationMinutes * 60000).toISOString() }).success, true);
+  }
+  for (const durationMinutes of [0, 15, 45, -30, 1470, 60.5, '60', null, true]) {
+    assert.equal(BookingDurationMinutesSchema.safeParse(durationMinutes).success, false);
+  }
+  assert.equal(CustomerAvailableSlotSchema.safeParse({ ...selection, durationMinutes: 60 }).success, false);
+  assert.equal(CustomerAvailabilityQuerySchema.parse({ date: '2026-11-19', serviceId: id, durationMinutes: '120' }).durationMinutes, 120);
+  for (const durationMinutes of [undefined, '', '1e2', ['60'], true]) {
+    assert.equal(CustomerAvailabilityQuerySchema.safeParse({ date: '2026-11-19', serviceId: id, durationMinutes }).success, false);
+  }
+});

@@ -6,3 +6,4 @@ export * from './workflows.js';
 export * from './records.js';
 export * from './auth.js';
 export * from './business.js';
+export * from './bookings.js';
