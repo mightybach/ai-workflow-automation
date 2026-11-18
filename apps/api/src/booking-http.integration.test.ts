@@ -66,6 +66,11 @@ test('booking HTTP retries and ownership survive a real API restart without leak
     assert.equal(bootstrap.status, 201);
     CustomerSessionResponseSchema.parse(await bootstrap.json());
     const cookie = bootstrap.headers.get('set-cookie')!.split(';')[0]!;
+    const chatMessage = 'Private synthetic chat ' + tag;
+    const chat = await fetch(base + '/customer/chat/messages', { method: 'POST', headers: { ...headers, cookie }, body: JSON.stringify({
+      message: chatMessage, context: { serviceId: null, staffId: null, date: null, durationMinutes: null },
+    }) });
+    assert.equal(chat.status, 200);
     const proposalResult = await fetch(base + '/customer/booking-proposals', { method: 'POST', headers: { ...headers, cookie, 'Idempotency-Key': 'proposal-' + tag },
       body: JSON.stringify({ slotId: slots[0]!.id, serviceId: service.id, durationMinutes: 120 }) });
     assert.equal(proposalResult.status, 201);
@@ -108,7 +113,7 @@ test('booking HTTP retries and ownership survive a real API restart without leak
     await stop();
     const token = cookie.split('=')[1]!;
     const hash = createHash('sha256').update(token).digest('hex');
-    for (const secret of [token, hash, customer.name, customer.email, key]) {
+    for (const secret of [token, hash, customer.name, customer.email, key, chatMessage]) {
       assert.equal(logs.includes(secret), false, 'Runtime logs must not expose customer identity, secrets or submission keys.');
     }
     assert.ok(logs.includes('request completed'), 'Assert redaction against actual request logs.');

@@ -10,7 +10,7 @@ It is also a portfolio project for full-stack development, concurrency-safe rese
 
 ## Current status
 
-**Phase 2 — deterministic booking core is complete and locally validated.**
+**Phase 3 — customer booking UI and deterministic mock chat are implemented and locally validated.**
 
 - Owner/staff dashboard with business-scoped staff, services and slot inventory.
 - Anonymous customer sessions, active service/staff lists and duration-aware availability.
@@ -21,7 +21,7 @@ It is also a portfolio project for full-stack development, concurrency-safe rese
 - UTC appointment instants, IANA business timezones and dd-mm-yyyy user-facing dates.
 - Retained legacy request demo with its original data and permissions.
 
-The web app currently provides the read-only business dashboard and legacy requests. Customer booking is available through the API/manual client. Customer UI and mock chat are Phase 3; AI is Phase 4. Cancellation, schedule/settings editors and notifications remain later work.
+The web app includes the customer booking page at **http://127.0.0.1:5173/book**, the read-only business dashboard and legacy requests. The scripted mock assistant asks for missing details; it cannot book or confirm. Real AI is Phase 4. Cancellation, schedule/settings editors and notifications remain later work.
 
 ## Run locally
 
@@ -70,7 +70,20 @@ Use `DEMO_PASSWORD` from `.env`; the example password is `flowpilot_demo_only`.
 
 Dashboard access requires an active business membership; legacy roles alone grant none. Enter dates as **dd-mm-yyyy** and inspect local times, staff/state filters and pagination. The dashboard shows RESERVED inventory but has no booking/schedule mutation controls. **Legacy requests** retains its own access rules and no edit/delete actions.
 
-### Manually try a synthetic booking
+### Book through the customer page
+
+Open **http://127.0.0.1:5173/book**, or choose **Book a synthetic appointment** on the home page. Start with business **demo-salon**; no staff login is required.
+
+1. Choose an active service, future seeded weekday as **dd-mm-yyyy**, duration and optional staff. View actual available appointments and select one.
+2. Review the server proposal: service, staff, full interval, local timezone/UTC offset and five-minute expiry. Selection holds no slots.
+3. Keep the fictional name and example.test email; separately click **Confirm appointment**. Success shows the server reference.
+4. Reload to restore the owned booking. After a lost response, **Retry same confirmation** preserves the exact key/details across reload and token rotation; it never creates a replacement automatically.
+
+The optional mock assistant accepts **Haircut tomorrow**, asks for duration, then accepts **60 minutes with Alex**. Choose **Use suggested details**, then query actual availability/select/review. Typing yes/confirm never books. Unknown or ambiguous requests, unsupported time expressions and cancellation/rescheduling require clarification/manual fallback.
+
+Chat transcript is browser-memory-only (20 entries), clears on reload/end/session rejection, and is never stored/logged by the server. A minimal synthetic retry draft lives in tab session storage; server replay/owned reads verify it. Ending the customer session removes access, not booking history. Confirmed appointments remain RESERVED: two base slots for 60 minutes, four for 120.
+
+### Optional PowerShell API check
 
 With `pnpm dev` running, use the tracked PowerShell client:
 
@@ -107,13 +120,14 @@ See [API contracts](packages/contracts/README.md) for exact bodies, limits, erro
 | POST | `/logout` | Revoke the presented customer token |
 | GET | `/services`, `/staff` | Active scoped catalog with pagination |
 | GET | `/availability` | Future complete appointment starts for date/service/duration |
+| POST | `/chat/messages` | Scoped scripted preferences/clarification; no availability or booking authority |
 | POST | `/booking-proposals` | Save immutable selection; no hold |
 | POST | `/bookings` | Explicitly confirm an owned proposal and reserve all required slots |
 | GET | `/bookings/:id` | Read only the live customer's owned booking |
 
 Customer cookies are separate from dashboard login and expire after eight hours. POSTs require the exact configured `Origin` and `X-Flowpilot-Client: web`. Proposal/confirmation writes require stable `Idempotency-Key` headers. Same scoped key/normalized input returns the original result; changed input returns 409. A proposal or availability response never guarantees inventory; confirmation revalidates current state. No model/tool path is authorized to confirm.
 
-API calendar dates remain `yyyy-mm-dd`, timestamps remain UTC ISO strings, and human-facing clients convert to dd-mm-yyyy in the business timezone. A future customer UI must preserve that distinction.
+API calendar dates remain `yyyy-mm-dd`, timestamps remain UTC ISO strings, and human-facing clients convert to dd-mm-yyyy in the business timezone. The customer UI also shows the UTC offset to distinguish repeated local times.
 
 Edit schema in `packages/db/prisma/schema.prisma`. Review its migrations too: SQL checks, partial active-claim uniqueness and deferred complete-coverage triggers supplement Prisma. `pnpm db:validate`, `pnpm db:generate` and `pnpm db:studio` provide inspection/development tools. For new schema work use `pnpm db:migrate --name describe_change`; review and commit the new migration without rewriting applied history or resetting data. `pnpm db:deploy` applies existing migrations.
 
@@ -139,10 +153,10 @@ pnpm --filter @flowpilot/web exec playwright install chromium
 pnpm --filter @flowpilot/web test:ui
 ```
 
-These browser checks exercise the existing dashboard and legacy requests, including dd-mm-yyyy inputs and mobile layout. They do not claim a customer booking UI. The legacy browser check leaves one synthetic request in the running demo. CI is configured to run the suites; GitHub-hosted execution has not been verified here.
+Browser checks cover dashboard/legacy requests and the customer flow: explicit confirmation, lost-response/reload/rotation recovery, clarification/manual fallback, expiry/conflicts, session cleanup and mobile layout. Customer checks use a tagged synthetic business and clean only its fixtures; the legacy browser check leaves one synthetic request in the running demo. CI includes these suites; hosted execution remains unverified.
 
 ## Scope and next phase
 
 This is a loopback-only development/test demo, not a public production booking service. Customer identity is session-based with no account recovery. Rate limits are local/in-memory; no production load or uptime claims are made. Current booking reads expose CONFIRMED lifecycle only. Arbitrary durations/alignment, multi-location, service-specific staff eligibility, cancellation/rescheduling, policy editors, retention/recovery workflows and integrations need later scoped work.
 
-**Next: Phase 3 customer booking/confirmation UI with deterministic mock chat.** AI extraction follows in Phase 4; admin changes in Phase 5; mock notification delivery in Phase 6. The backend stays a modular monolith until an actual need justifies extraction.
+**Next: Phase 4 validated local AI intent extraction behind the mock interface.** Admin changes follow in Phase 5; mock notification delivery in Phase 6. The backend stays a modular monolith until an actual need justifies extraction. The current mock supports a small English grammar, not arbitrary conversation; it has a 100-item service/staff catalog cap (manual lists cap at 1000), and no persisted transcript recovery. No real AI provider or delivery integration is installed.

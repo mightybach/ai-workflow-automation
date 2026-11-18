@@ -7,3 +7,4 @@ export * from './records.js';
 export * from './auth.js';
 export * from './business.js';
 export * from './bookings.js';
+export * from './chat.js';

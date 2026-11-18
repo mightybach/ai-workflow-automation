@@ -1,7 +1,7 @@
 import { ApiErrorSchema } from '@flowpilot/contracts';
 
 export class ApiFailure extends Error {
-  constructor(public readonly status: number, message: string, public readonly traceId?: string) { super(message); }
+  constructor(public readonly status: number, message: string, public readonly traceId?: string, public readonly code?: string) { super(message); }
 }
 export async function apiRequest<T>(path: string, schema: {
   safeParse(value: unknown): { success: true; data: T } | { success: false };
@@ -28,8 +28,8 @@ export async function apiRequest<T>(path: string, schema: {
   const json: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const parsed = ApiErrorSchema.safeParse(json);
-    if (response.status === 401 && path !== '/auth/login') window.dispatchEvent(new Event('flowpilot-session-expired'));
-    throw new ApiFailure(response.status, parsed.success ? parsed.data.message : 'The request failed.', parsed.success ? parsed.data.traceId : undefined);
+    if (response.status === 401 && path !== '/auth/login') window.dispatchEvent(new Event(path.startsWith('/customer/') ? 'flowpilot-customer-session-expired' : 'flowpilot-session-expired'));
+    throw new ApiFailure(response.status, parsed.success ? parsed.data.message : 'The request failed.', parsed.success ? parsed.data.traceId : undefined, parsed.success ? parsed.data.code : undefined);
   }
   const parsed = schema.safeParse(json);
   if (!parsed.success) throw new ApiFailure(502, 'The API returned an unexpected response.');

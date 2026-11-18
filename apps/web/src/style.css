@@ -56,6 +56,13 @@ li { margin: 12px 0; overflow-wrap: anywhere; }
   .slot-table .badge { font-size: .75rem; }
 }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+a { color: #9aefd7; }
+.booking-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.appointment-options { list-style: none; padding: 0; display: grid; gap: 12px; }
+.appointment-options li { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0; }
+.appointment-options span { color: #c0ccda; font-size: .9rem; }
+.chat-transcript { max-height: 320px; overflow-y: auto; padding-left: 24px; white-space: pre-wrap; }
+@media (max-width: 600px) { .booking-fields { grid-template-columns: 1fr; gap: 0; } .customer-page button { max-width: 100%; overflow-wrap: anywhere; } }
 @media (max-width: 600px) { main { padding: 32px 16px; } section { padding: 18px; } th, td { padding: 12px 8px; } }
 
 

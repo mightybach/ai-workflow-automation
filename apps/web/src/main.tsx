@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HealthResponseSchema, SessionResponseSchema, LogoutResponseSchema, type UserResponse } from '@flowpilot/contracts';
 import { LoginForm } from './features/auth/LoginForm';
 import { PersistedRequests } from './features/requests/PersistedRequests';
 import { BusinessDashboard } from './features/business/BusinessDashboard';
+const CustomerBookingPage = lazy(() => import('./features/booking/CustomerBookingPage').then((module) => ({ default: module.CustomerBookingPage })));
 import { apiRequest, errorMessage } from './lib/api';
 import './style.css';
 
@@ -54,6 +55,7 @@ function App() {
       <p className="eyebrow">FLOWPILOT BOOKING / LOCAL DEMO</p>
       <h1>Your salon, ready to plan.</h1>
       <p>Inspect your team, services and 30-minute slot inventory in one place.</p>
+      <p><a href="/book">Book a synthetic appointment</a></p>
       {authError && <p role="alert" className="error">{authError}</p>}
       {checkingSession ? <p role="status">Checking session…</p> : user ? <>
         <div className="session-bar"><p>Signed in as {user.email}</p><button className="secondary" disabled={signingOut} onClick={() => { void signOut(); }}>Sign out</button></div>
@@ -70,12 +72,12 @@ function App() {
         <button onClick={() => { setStatus('Checking API connection…'); setAttempt(attempt + 1); }}>
           Check connection
         </button>
-        <p className="note">Synthetic data only. Customer web/chat UI and AI are planned.</p>
+        <p className="note">Synthetic data only. Customer booking and mock chat are at /book. AI is planned.</p>
       </section>
     </main>
   );
 }
 
-createRoot(document.getElementById('root')!).render(<App />);
+createRoot(document.getElementById('root')!).render(window.location.pathname === '/book' ? <Suspense fallback={<main><p role="status">Loading booking…</p></main>}><CustomerBookingPage /></Suspense> : <App />);
 
 

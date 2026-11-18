@@ -224,3 +224,16 @@ test('multi-slot appointment contracts accept increments and bind end time to re
     assert.equal(CustomerAvailabilityQuerySchema.safeParse({ date: '2026-11-19', serviceId: id, durationMinutes }).success, false);
   }
 });
+
+test('chat and browser recovery contracts reject authority fields and forged confirmation state', () => {
+  const context = { serviceId: null, staffId: null, date: null, durationMinutes: null };
+  assert.equal(bookingContracts.CustomerChatBodySchema.safeParse({ message: 'Haircut tomorrow', context }).success, true);
+  for (const extra of [{ businessId: id }, { confirmed: true }, { referenceTime: timestamp }]) {
+    assert.equal(bookingContracts.CustomerChatBodySchema.safeParse({ message: 'Haircut', context, ...extra }).success, false);
+  }
+  assert.equal(bookingContracts.CustomerChatBodySchema.safeParse({ message: 'x'.repeat(1001), context }).success, false);
+  const draft = { businessId: id, sessionExpiresAt: timestamp, proposal: { key: 'stable-proposal', body: { slotId: id, serviceId: runId, durationMinutes: 60 } }, confirmation: null, bookingId: null };
+  assert.equal(bookingContracts.CustomerBookingDraftSchema.safeParse(draft).success, true);
+  assert.equal(bookingContracts.CustomerBookingDraftSchema.safeParse({ ...draft, status: 'CONFIRMED' }).success, false);
+  assert.equal(bookingContracts.CustomerBookingDraftSchema.safeParse({ ...draft, confirmation: { key: 'stable-confirm', body: { proposalId: id, customer: { name: 'Demo', email: 'demo@example.test' }, confirmed: true } } }).success, false);
+});
