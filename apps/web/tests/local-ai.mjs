@@ -51,12 +51,11 @@ try {
   assert.deepEqual(result.needsClarification, []);
   const date = addCalendarDays(businessDate(new Date(result.referenceTime), business.timezone), 1);
   assert.deepEqual(result.selection, { serviceId: service.id, staffId: staff.id, date, durationMinutes: 60 });
-  assert.match(result.message, /tomoral → tomorrow/);
-  assert.match(result.message, /minuit → minutes/);
+  assert.doesNotMatch(result.message, /Spelling adjusted|tomoral|\bminuit\b|→/);
   const followUp = await chat('tomorrrow');
   assert.deepEqual(followUp.selection, result.selection, 'Date-only typo follow-up retains Haircut, Alex and 60 minutes.');
   assert.deepEqual(followUp.needsClarification, []);
-  assert.match(followUp.message, /tomorrrow → tomorrow/);
+  assert.doesNotMatch(followUp.message, /Spelling adjusted|tomorrrow|→/);
   await page.getByLabel('Chat messages').getByText('AI assistant:', { exact: true }).first().waitFor();
   assert.equal(await page.getByLabel('Appointment date (dd-mm-yyyy)').inputValue(), date.split('-').reverse().join('-'));
   assert.equal(await page.getByLabel('Duration', { exact: true }).inputValue(), '60');
@@ -92,7 +91,7 @@ try {
   await page.getByRole('button', { name: 'End customer session' }).click();
   await page.getByRole('button', { name: 'Start booking', exact: true }).waitFor();
   assert.deepEqual(errors, []);
-  console.log('PASS: real AI typing feedback, disclosed typo correction, automatic Alex/date/duration fill, contextual database availability, chat consent rejected, no proposal/booking effects.');
+  console.log('PASS: real AI typing feedback, silent typo correction, automatic Alex/date/duration fill, contextual database availability, chat consent rejected, no proposal/booking effects.');
 } finally {
   await browser.close();
   try {

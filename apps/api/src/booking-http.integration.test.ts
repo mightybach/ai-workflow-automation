@@ -41,7 +41,7 @@ test('booking HTTP retries and ownership survive a real API restart without leak
       child = spawn(process.execPath, ['--import', 'tsx', 'src/server.ts'], {
         cwd: fileURLToPath(new URL('..', import.meta.url)), windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, DATABASE_URL: url!, API_HOST: '127.0.0.1', API_PORT: String(port), NODE_ENV: 'test', DEMO_AUTH_ENABLED: 'true', WEB_ORIGIN: 'http://127.0.0.1:5173' },
+        env: { ...process.env, DATABASE_URL: url!, API_HOST: '127.0.0.1', API_PORT: String(port), NODE_ENV: 'test', DEMO_AUTH_ENABLED: 'true', WEB_ORIGIN: 'http://127.0.0.1:5173', AI_PROVIDER: 'mock' },
       });
       const capture = (chunk: Buffer) => { logs = (logs + chunk.toString()).slice(-200000); };
       child.stdout!.on('data', capture); child.stderr!.on('data', capture);

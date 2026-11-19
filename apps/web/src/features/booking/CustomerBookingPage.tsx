@@ -8,6 +8,7 @@ import {
   type CustomerBookingDraft, type BookingPreferences,
 } from '@flowpilot/contracts';
 import { apiRequest, ApiFailure, errorMessage } from '../../lib/api';
+import { ReschedulePanel } from './ReschedulePanel';
 
 const storageKey = 'flowpilot.customer.booking.v1';
 const emptyPreferences: BookingPreferences = { serviceId: null, staffId: null, date: null, durationMinutes: null };
@@ -56,6 +57,7 @@ export function CustomerBookingPage() {
   const [draft, setDraft] = useState<CustomerBookingDraft | null>(null);
   const [proposal, setProposal] = useState<BookingProposalResponse | null>(null);
   const [booking, setBooking] = useState<BookingResponse | null>(null);
+  const [cancelReview, setCancelReview] = useState(false);
   const [name, setName] = useState('Synthetic Customer');
   const [email, setEmail] = useState('demo@example.test');
   const [busy, setBusy] = useState(true);
@@ -71,7 +73,7 @@ export function CustomerBookingPage() {
   const [preferences, setPreferences] = useState<BookingPreferences>(emptyPreferences);
 
   function remember(value: CustomerBookingDraft | null) { retain(value); setDraft(value); }
-  function clearSelection() { remember(null); setProposal(null); setBooking(null); setAvailable(null); setError(''); }
+  function clearSelection() { remember(null); setProposal(null); setBooking(null); setCancelReview(false); setAvailable(null); setError(''); }
   async function recoverProposal(value: CustomerBookingDraft) {
     const result = await apiRequest('/customer/booking-proposals', BookingProposalResponseSchema, { method: 'POST', body: value.proposal.body, idempotencyKey: value.proposal.key });
     if (value.confirmation && value.confirmation.body.proposalId !== result.id) throw new Error('The saved confirmation belongs to a different session. Do not create a replacement booking; contact the demo operator.');
@@ -93,7 +95,7 @@ export function CustomerBookingPage() {
     let active = true;
     const expired = () => {
       const hadSession = sessionRef.current !== null;
-      sessionRef.current = null; setSession(null); setDraft(null); setProposal(null); setBooking(null);
+      sessionRef.current = null; setSession(null); setDraft(null); setProposal(null); setBooking(null); setCancelReview(false);
       setServices([]); setStaff([]); setAvailable(null); setChat([]); setPreferences(emptyPreferences); setChatReady(false); setChatPending(null);
       try { retain(null); } catch { /* Access is still cleared when storage is unavailable. */ }
       if (hadSession) setError('Your customer session expired. Start a new session; no booking is inferred from chat or browser storage.');
@@ -188,12 +190,37 @@ export function CustomerBookingPage() {
       const confirmed = await apiRequest('/customer/bookings', BookingResponseSchema, {
         method: 'POST', body: attempt.confirmation!.body, idempotencyKey: attempt.confirmation!.key,
       });
-      setBooking(confirmed); remember({ ...attempt, bookingId: confirmed.id });
+      remember({ ...attempt, bookingId: confirmed.id });
+      // A replay is an immutable creation snapshot; owned reads show lifecycle changes.
+      setBooking(await apiRequest('/customer/bookings/' + confirmed.id, BookingResponseSchema));
     } catch (cause) {
       if (cause instanceof ApiFailure && cause.status === 409 && ['SLOT_UNAVAILABLE', 'PROPOSAL_EXPIRED', 'DURATION_NOT_ALLOWED', 'SELECTION_UNAVAILABLE'].includes(cause.code ?? '')) {
         remember(null); setProposal(null); setAvailable(null);
         setError(messageOf(cause) + ' View availability again and review a fresh selection.');
       } else setError(messageOf(cause) + (draft.confirmation || cause instanceof ApiFailure && (cause.status === 0 || cause.status >= 500) ? ' Retry the same confirmation to check its result; do not start a replacement booking.' : ''));
+    } finally { setBusy(false); }
+  }
+  async function submitCancellation() {
+    if (!draft || !booking || busy) return;
+    const activeSession = sessionRef.current;
+    setBusy(true); setError('');
+    let attempt = draft;
+    try {
+      if (!attempt.cancellation) {
+        attempt = { ...draft, cancellation: { key: crypto.randomUUID(), bookingId: booking.id } };
+        remember(attempt);
+      }
+      const cancelled = await apiRequest('/customer/bookings/' + attempt.cancellation!.bookingId + '/cancel', BookingResponseSchema, {
+        method: 'POST', body: {}, idempotencyKey: attempt.cancellation!.key,
+      });
+      if (sessionRef.current !== activeSession) return;
+      setBooking(cancelled); remember({ ...attempt, cancellation: undefined }); setCancelReview(false); setAvailable(null);
+    } catch (cause) {
+      if (sessionRef.current !== activeSession) return;
+      if (cause instanceof ApiFailure && [400, 404, 409].includes(cause.status)) {
+        remember({ ...attempt, cancellation: undefined }); setCancelReview(false);
+        setError(messageOf(cause));
+      } else setError(messageOf(cause) + ' Retry the same cancellation to check its result.');
     } finally { setBusy(false); }
   }
   async function sendChat() {
@@ -229,7 +256,7 @@ export function CustomerBookingPage() {
     } catch (cause) { setError(messageOf(cause)); }
     finally { setBusy(false); setChatPending(null); }
   }
-  const pending = !!draft?.confirmation && !booking;
+  const pending = !!draft?.confirmation && !booking || !!draft?.cancellation || !!draft?.rescheduling;
   const expired = !!proposal && Date.parse(proposal.expiresAt) <= now;
   return <main className="customer-page">
     <p className="eyebrow">FLOWPILOT BOOKING / SYNTHETIC DEMO</p>
@@ -246,11 +273,21 @@ export function CustomerBookingPage() {
       <div className="session-bar"><p><strong>{session.businessName}</strong> · {session.timezone} · up to {session.maxBookingDurationMinutes} minutes</p>
         <button className="secondary" disabled={busy} onClick={() => { void refreshSetup(); }}>Refresh customer setup</button>
         <button className="secondary" disabled={busy || pending} onClick={() => { void end(); }}>End customer session</button></div>
-      {booking ? <section aria-labelledby="booking-complete"><h2 id="booking-complete">Appointment confirmed</h2>
+      {booking ? <section aria-labelledby="booking-complete"><h2 id="booking-complete">{booking.status === 'CANCELLED' ? 'Appointment cancelled' : 'Appointment confirmed'}</h2>
         <p className="success">Reference: <strong>{booking.reference}</strong></p>
         <p>{booking.serviceName} with {booking.staffName}<br />{localTime(booking.startAt, booking.timezone)} – {localTime(booking.endAt, booking.timezone)} ({booking.timezone})<br />{booking.durationMinutes} minutes · {booking.customer.name}</p>
-        <p className="note">Keep this customer session to view the booking. Ending it removes access; the reference alone is not a login. Cancellation is not available yet.</p>
-        <button onClick={clearSelection}>Book another appointment</button>
+        <p className="note">Keep this customer session to view the booking. Ending it removes access; the reference alone is not a login.</p>
+        {booking.cancelledAt && <p role="status">Cancelled {localTime(booking.cancelledAt, booking.timezone)}. Booking history is retained.</p>}
+        {(booking.status === 'CONFIRMED' || draft?.cancellation) && <>
+          {!cancelReview && !draft?.cancellation ? <button className="secondary" disabled={busy || !!draft?.rescheduling} onClick={() => setCancelReview(true)}>Review cancellation</button> :
+            <div className="schedule-review"><h3>Review cancellation</h3><p>Cancel appointment {booking.reference} shown above? This releases the full appointment. Closed times remain blocked. This demo allows cancellation before the appointment starts.</p>
+              <button disabled={busy} onClick={() => { void submitCancellation(); }}>{draft?.cancellation ? 'Retry same cancellation' : 'Confirm cancellation'}</button>
+              <button className="secondary" disabled={busy || !!draft?.cancellation} onClick={() => setCancelReview(false)}>Keep appointment</button>
+            </div>}
+        </>}
+        {draft && !cancelReview && (booking.status === 'CONFIRMED' || draft.rescheduling) && <ReschedulePanel key={booking.id} booking={booking} session={session} services={services} staff={staff} draft={draft} busy={busy} onBusy={setBusy} remember={remember}
+          isActive={() => sessionRef.current === session} onReplaced={(current, value) => { remember(value); setBooking(current); setAvailable(null); }} />}
+        <button disabled={busy || pending} onClick={clearSelection}>Book another appointment</button>
       </section> : <>
         <section aria-labelledby="booking-chat"><h2 id="booking-chat">Booking assistant</h2>
           <p className="note">Try “Haircut tomorrow for 30 minutes with Alex”. I’ll fill in the details and help you find a time. You review and confirm before anything is booked.</p>

@@ -24,7 +24,15 @@ export const CustomerBookingDraftSchema = z.object({
   proposal: z.object({ key: IdempotencyKeySchema, body: CreateBookingProposalBodySchema }).strict(),
   confirmation: z.object({ key: IdempotencyKeySchema, body: ConfirmBookingBodySchema }).strict().nullable(),
   bookingId: IdSchema.nullable(),
-}).strict();
+  cancellation: z.object({ key: IdempotencyKeySchema, bookingId: IdSchema }).strict().optional(),
+  rescheduling: z.object({
+    originalBookingId: IdSchema,
+    proposal: z.object({ key: IdempotencyKeySchema, body: CreateBookingProposalBodySchema }).strict().nullable(),
+    confirmation: z.object({ key: IdempotencyKeySchema, proposalId: IdSchema }).strict().nullable(),
+  }).strict().optional(),
+}).strict().refine((value) => !value.cancellation || value.cancellation.bookingId === value.bookingId, 'Cancellation must match the owned booking recovery ID.')
+  .refine((value) => !value.rescheduling || value.rescheduling.originalBookingId === value.bookingId && (!value.rescheduling.confirmation || !!value.rescheduling.proposal), 'Rescheduling must match the owned booking and saved selection.')
+  .refine((value) => !(value.cancellation && value.rescheduling), 'Resolve one booking change at a time.');
 export type BookingPreferences = z.infer<typeof BookingPreferencesSchema>;
 export type CustomerChatBody = z.infer<typeof CustomerChatBodySchema>;
 export type CustomerChatResponse = z.infer<typeof CustomerChatResponseSchema>;

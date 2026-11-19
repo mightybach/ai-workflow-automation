@@ -57,7 +57,7 @@ export function bookingClarification(needs: ReadonlySet<string>, input: Extracti
     const names = input.services.slice(0, 2).map((item) => item.name.slice(0, 40));
     return 'Which service would you like?' + (names.length ? ' You can choose ' + names.join(' or ') + '.' : ' Choose a service in the booking form.');
   }
-  if (needs.has('date')) return 'What date would you like? You can say tomorrow or enter a date as dd-mm-yyyy.';
+  if (needs.has('date')) return 'What date would you like? Say tomorrow, use dd-mm-yyyy, or day-month (for example 22-11). Without a year, I use this year unless that date has passed.';
   if (needs.has('duration')) return `How long would you like the appointment to be? Use 30-minute increments, up to ${input.maximum} minutes.`;
   if (needs.has('staff')) return 'Which staff member would you like? Use a name from the form, or say any staff.';
   if (needs.has('time')) return 'Please choose a specific time from the available appointments below. I cannot apply that time preference automatically.';
@@ -67,14 +67,11 @@ export function bookingClarification(needs: ReadonlySet<string>, input: Extracti
 export function normalizeBookingInput(source: ExtractionInput) {
   // Exact catalog labels always take precedence over spelling suggestions.
   const protectedWords = new Set([...source.services, ...source.staff].flatMap((item) => item.name.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? []));
-  const changes = new Map<string, string>();
   const message = source.message.replace(/[\p{L}\p{N}_]+/gu, (word, offset: number) => {
     const key = word.toLowerCase();
     const replacement = protectedWords.has(key) ? null : correctedWord(key, source.message.slice(0, offset));
     if (!replacement) return word;
-    changes.set(key, replacement);
     return replacement;
   });
-  const notice = changes.size ? 'Spelling adjusted: ' + [...changes].slice(0, 3).map(([from, to]) => `${from} → ${to}`).join('; ') + '. ' : '';
-  return { input: { ...source, message }, notice };
+  return { input: { ...source, message } };
 }

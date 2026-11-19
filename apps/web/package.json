@@ -9,7 +9,14 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 127.0.0.1",
     "test:ai:ui": "node --env-file-if-exists=../../.env tests/local-ai.mjs",
-    "test:ui": "node --env-file-if-exists=../../.env tests/business-setup.mjs && node --env-file-if-exists=../../.env tests/phase1.mjs && node --env-file-if-exists=../../.env tests/customer-booking.mjs"
+    "test:settings:ui": "node --env-file-if-exists=../../.env tests/business-settings.mjs",
+    "test:schedule:ui": "node --env-file-if-exists=../../.env tests/schedule.mjs",
+    "test:ui": "node --env-file-if-exists=../../.env tests/business-setup.mjs && node --env-file-if-exists=../../.env tests/business-settings.mjs && node --env-file-if-exists=../../.env tests/schedule.mjs && node --env-file-if-exists=../../.env tests/phase1.mjs && node --env-file-if-exists=../../.env tests/customer-booking.mjs",
+    "test:policy:ui": "node --env-file-if-exists=../../.env tests/schedule-policy.mjs",
+    "test:cancellation:ui": "node --env-file-if-exists=../../.env tests/cancellation.mjs",
+    "test:rescheduling:ui": "node --env-file-if-exists=../../.env tests/rescheduling.mjs",
+    "test:booking-admin:ui": "node --env-file-if-exists=../../.env tests/booking-admin.mjs",
+    "test:ui:all": "node --env-file-if-exists=../../.env tests/run-ui.mjs"
   },
   "dependencies": {
     "@flowpilot/contracts": "workspace:*",

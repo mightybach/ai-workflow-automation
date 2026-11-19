@@ -2,6 +2,7 @@ import { BusinessDateSchema, CustomerChatResponseSchema, type CustomerChatRespon
 import { addCalendarDays, businessDate } from '@flowpilot/db';
 import type { ExtractionInput, IntentExtractor } from './intent.js';
 import { bookingClarification, bookingNextStep, isAvailabilityQuestion, normalizeBookingInput } from './booking-text.js';
+import { assumedYearNotice, numericBookingDates, resolveNumericBookingDate } from './booking-date.js';
 export type { ExtractionInput, IntentExtractor } from './intent.js';
 
 const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -9,11 +10,12 @@ const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // Pure interpretation only: no database client, network, tools or booking effects.
 export class MockIntentExtractor implements IntentExtractor {
   extract(source: ExtractionInput): CustomerChatResponse {
-    const { input, notice } = normalizeBookingInput(source);
+    const { input } = normalizeBookingInput(source);
+    let dateNotice = '';
     const selection = { ...input.context };
     const needs = new Set<'service' | 'staff' | 'date' | 'duration' | 'time' | 'request'>();
     const finish = (intent: CustomerChatResponse['intent'], message: string) => CustomerChatResponseSchema.parse({
-      provider: 'mock-v1', intent, selection, needsClarification: [...needs], message: notice + message,
+      provider: 'mock-v1', intent, selection, needsClarification: [...needs], message: dateNotice + message,
       referenceTime: input.referenceTime.toISOString(), timezone: input.timezone,
     });
     if (!input.services.some((item) => item.id === selection.serviceId)) selection.serviceId = null;
@@ -45,11 +47,12 @@ export class MockIntentExtractor implements IntentExtractor {
     if (/\bany staff\b/.test(remaining)) { selection.staffId = null; needs.delete('staff'); remaining = remaining.replace(/\bany staff\b/g, ' '); }
     const dates: string[] = [];
     remaining = remaining.replace(/\b(today|tomorrow)\b/g, (value) => { dates.push(value === 'today' ? today : addCalendarDays(today, 1)); return ' '; });
-    remaining = remaining.replace(/\b(\d{2})-(\d{2})-(\d{4})\b/g, (_match, day: string, month: string, year: string) => { dates.push(`${year}-${month}-${day}`); return ' '; });
+    const assumptions: string[] = [];
+    remaining = remaining.replace(numericBookingDates(), (text) => { const date = resolveNumericBookingDate(text, today); dates.push(date ?? ''); if (date) assumptions.push(assumedYearNotice(text, date)); return ' '; });
     if (dates.length) {
       const parsed = BusinessDateSchema.safeParse(dates[0]);
       if (dates.length !== 1 || !parsed.success || parsed.data < today) { selection.date = null; needs.add('date'); }
-      else selection.date = parsed.data;
+      else { selection.date = parsed.data; dateNotice = assumptions[0] ?? ''; }
     }
     const durations: number[] = [];
     remaining = remaining.replace(/\b(\d+)\s*(minutes?|mins?|hours?)\b/g, (_match, amount: string, unit: string) => {

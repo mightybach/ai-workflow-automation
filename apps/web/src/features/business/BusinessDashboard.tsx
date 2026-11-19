@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import {
   AdminSlotListResponseSchema, BusinessDateSchema, BusinessSetupResponseSchema,
   ServiceListResponseSchema, StaffListResponseSchema, SlotStateSchema,
   type AdminSlotListResponse, type BusinessSetupResponse, type ServiceListResponse, type StaffListResponse,
 } from '@flowpilot/contracts';
 import { apiRequest, errorMessage } from '../../lib/api';
+import { BookingSettings } from './BookingSettings';
+const ScheduleEditor = lazy(() => import('./ScheduleEditor').then((module) => ({ default: module.ScheduleEditor })));
+const SchedulePolicyEditor = lazy(() => import('./SchedulePolicyEditor').then((module) => ({ default: module.SchedulePolicyEditor })));
+const BookingAdministration = lazy(() => import('./BookingAdministration').then((module) => ({ default: module.BookingAdministration })));
 
 const displayDate = (iso: string) => iso.split('-').reverse().join('-');
 const apiDate = (display: string) => /^\d{2}-\d{2}-\d{4}$/.test(display) ? displayDate(display) : '';
@@ -18,7 +22,7 @@ function Pages({ name, page, total, size, disabled, onPage }: {
     <button className="secondary" disabled={disabled || page * size >= total} aria-label={'Next ' + name + ' page'} onClick={() => onPage(page + 1)}>Next</button>
   </nav>;
 }
-export function BusinessDashboard() {
+export function BusinessDashboard({ actorId }: { actorId: string }) {
   const [setup, setSetup] = useState<BusinessSetupResponse | null>(null);
   const [staff, setStaff] = useState<StaffListResponse | null>(null);
   const [services, setServices] = useState<ServiceListResponse | null>(null);
@@ -36,6 +40,7 @@ export function BusinessDashboard() {
   const [page, setPage] = useState(1);
   const [staffPage, setStaffPage] = useState(1);
   const [servicePage, setServicePage] = useState(1);
+  const [inventoryRefresh, setInventoryRefresh] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -76,7 +81,7 @@ export function BusinessDashboard() {
       .catch((cause: unknown) => { if (!controller.signal.aborted) { setSlots(null); setSlotError(errorMessage(cause)); } })
       .finally(() => { if (!controller.signal.aborted) setSlotsLoading(false); });
     return () => controller.abort();
-  }, [setup, date, staffId, state, page, refresh]);
+  }, [setup, date, staffId, state, page, refresh, inventoryRefresh]);
 
   return <div>
     <div className="section-heading">
@@ -88,8 +93,10 @@ export function BusinessDashboard() {
         <span className="badge">Synthetic salon · {setup.membership.role}</span>
         <h2 id="business-name">{setup.business.name}</h2>
         <p>Time zone: <strong>{setup.business.timezone}</strong></p>
-        <p className="note">Inspect staff, services and slot inventory. This dashboard is read-only.</p>
+        <p className="note">Inspect staff, services and slot inventory. Business owners can edit booking settings and block or reopen future times.</p>
       </section>
+      <BookingSettings role={setup.membership.role} refresh={refresh} />
+      {staff && <Suspense fallback={<p role="status">Loading booking administration…</p>}><BookingAdministration businessId={setup.business.id} actorId={actorId} role={setup.membership.role} today={setup.today} timezone={setup.business.timezone} staff={staff.items} onSaved={() => setInventoryRefresh((n) => n + 1)} /></Suspense>}
       {listError && <p role="alert" className="error">{listError}</p>}
       {listsLoading ? <p role="status">Loading staff and services…</p> : <div className="setup-grid">
         <section aria-labelledby="staff-heading">
@@ -109,9 +116,13 @@ export function BusinessDashboard() {
           </>}
         </section>
       </div>}
+      {setup.membership.role === 'OWNER' && <>
+        <Suspense fallback={<p role="status">Loading working hours editor…</p>}><SchedulePolicyEditor today={setup.today} staff={staff?.items ?? []} onSaved={() => setInventoryRefresh((value) => value + 1)} /></Suspense>
+        <Suspense fallback={<p role="status">Loading inventory editor…</p>}><ScheduleEditor today={setup.today} staff={staff?.items ?? []} onSaved={() => setInventoryRefresh((value) => value + 1)} /></Suspense>
+      </>}
       <section aria-labelledby="slot-heading" aria-busy={slotsLoading}>
         <h3 id="slot-heading">Slot inventory</h3>
-        <p className="note">Times below use {setup.business.timezone}. Inventory is read-only and is not a booking guarantee.</p>
+        <p className="note">Times below use {setup.business.timezone}. This inventory view is not a booking guarantee.</p>
         <div className="toolbar">
           <label htmlFor="slot-date">Date</label>
           <input id="slot-date" type="text" inputMode="numeric" placeholder="dd-mm-yyyy" aria-describedby="slot-date-format" maxLength={10} value={date} onChange={(event) => { setDate(event.target.value); setPage(1); }} />

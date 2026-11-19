@@ -1,4 +1,4 @@
-import type { PrismaClient } from './generated/prisma/client.js';
+import { Prisma, type PrismaClient } from './generated/prisma/client.js';
 import { addCalendarDays, businessDate, localBusinessInstant } from './business-time.js';
 
 export const DEMO_BUSINESS_SLUG = 'demo-salon';
@@ -26,6 +26,8 @@ export async function seedBusinessSetup(db: PrismaClient, passwordHash: string, 
       update: {},
     });
     if (business.timezone !== 'Australia/Brisbane') throw new Error('Demo salon timezone changed; review its seed schedule before seeding.');
+    const [locked] = await tx.$queryRaw<{ updatedAt: Date }[]>(Prisma.sql`SELECT "updatedAt" FROM "Business" WHERE id = ${business.id}::uuid FOR UPDATE`);
+    let createdCount = 0;
     for (const role of ['OWNER', 'STAFF'] as const) {
       const email = role.toLowerCase() + '@flowpilot.test';
       const user = await tx.user.upsert({
@@ -43,10 +45,14 @@ export async function seedBusinessSetup(db: PrismaClient, passwordHash: string, 
       });
       if (!staff.active) continue;
       // Never reset RESERVED/BLOCKED rows or delete historical inventory.
-      await tx.availabilitySlot.createMany({
-        data: times.map((time) => ({ businessId: business.id, staffId: staff.id, ...time })),
+      const closures = await tx.scheduleClosure.findMany({ where: { businessId: business.id, releasedAt: null, OR: [{ staffId: null }, { staffId: staff.id }],
+        startAt: { lt: times[times.length - 1]!.endAt }, endAt: { gt: times[0]!.startAt } } });
+      const result = await tx.availabilitySlot.createMany({
+        data: times.map((time) => ({ businessId: business.id, staffId: staff.id, ...time,
+          state: closures.some((closure) => closure.startAt < time.endAt && closure.endAt > time.startAt) ? 'BLOCKED' as const : 'AVAILABLE' as const })),
         skipDuplicates: true,
       });
+      createdCount += result.count;
     }
     for (const [slug, name] of [['haircut', 'Haircut'], ['consultation', 'Consultation']] as const) {
       await tx.service.upsert({
@@ -54,6 +60,7 @@ export async function seedBusinessSetup(db: PrismaClient, passwordHash: string, 
         create: { businessId: business.id, slug, name, durationMinutes: 30 }, update: {},
       });
     }
+    if (createdCount) await tx.business.update({ where: { id: business.id }, data: { updatedAt: new Date(Math.max(+referenceTime, +locked!.updatedAt + 1)) } });
     return { businessId: business.id, startDate: anchor, days: 14 };
   }, { timeout: 15000 });
 }

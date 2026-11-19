@@ -173,6 +173,7 @@ model Business {
   bookingProposals          BookingProposal[]
   bookings                  Booking[]
   bookingActions            BookingAction[]
+  closures                  ScheduleClosure[]
 }
 
 // One business per dashboard user in Phase 1. Legacy User.role is unchanged.
@@ -200,9 +201,27 @@ model Staff {
   updatedAt        DateTime           @updatedAt @db.Timestamptz(3)
   slots            AvailabilitySlot[]
   bookingProposals BookingProposal[]
+  closures         ScheduleClosure[]
 
   @@unique([businessId, id])
   @@unique([businessId, slug])
+}
+
+// Dated business/staff closure policy, independent of existing inventory.
+// Active exact-window uniqueness and closure/slot guards are in SQL migrations.
+model ScheduleClosure {
+  id         String    @id @default(uuid()) @db.Uuid
+  businessId String    @db.Uuid
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  staffId    String?   @db.Uuid
+  staff      Staff?    @relation(fields: [businessId, staffId], references: [businessId, id], onDelete: Restrict)
+  startAt    DateTime  @db.Timestamptz(3)
+  endAt      DateTime  @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  releasedAt DateTime? @db.Timestamptz(3)
+
+  @@index([businessId, startAt, endAt])
+  @@index([businessId, staffId])
 }
 
 model Service {
@@ -277,11 +296,14 @@ model BookingProposal {
   staffName       String           @db.VarChar(120)
   createdAt       DateTime         @default(now()) @db.Timestamptz(3)
   expiresAt       DateTime         @db.Timestamptz(3)
-  booking         Booking?
+  booking         Booking?         @relation("ConsumedProposal")
+  rescheduleOfId  String?          @db.Uuid
+  rescheduleOf    Booking?         @relation("RescheduleSource", fields: [businessId, sessionId, rescheduleOfId], references: [businessId, sessionId, id], onDelete: NoAction, map: "BookingProposal_reschedule_source_fkey")
   actions         BookingAction[]
 
   @@unique([businessId, sessionId, id])
   @@index([expiresAt])
+  @@index([rescheduleOfId])
 }
 
 enum BookingStatus {
@@ -292,6 +314,8 @@ enum BookingStatus {
 enum BookingOperation {
   PROPOSE
   CONFIRM
+  CANCEL
+  RESCHEDULE
 }
 
 model Booking {
@@ -301,7 +325,8 @@ model Booking {
   sessionId     String          @db.Uuid
   session       CustomerSession @relation(fields: [businessId, sessionId], references: [businessId, id], onDelete: Restrict)
   proposalId    String          @unique @db.Uuid
-  proposal      BookingProposal @relation(fields: [businessId, sessionId, proposalId], references: [businessId, sessionId, id], onDelete: Restrict)
+  proposal      BookingProposal @relation("ConsumedProposal", fields: [businessId, sessionId, proposalId], references: [businessId, sessionId, id], onDelete: Restrict)
+  rescheduleProposals BookingProposal[] @relation("RescheduleSource")
   reference     String          @unique @db.VarChar(64)
   status        BookingStatus   @default(CONFIRMED)
   customerName  String          @db.VarChar(120)
@@ -312,6 +337,7 @@ model Booking {
   actions       BookingAction[]
 
   @@unique([businessId, id])
+  @@unique([businessId, sessionId, id])
   @@unique([businessId, sessionId, proposalId, id])
   @@unique([businessId, sessionId, proposalId])
   @@index([businessId, createdAt, id])

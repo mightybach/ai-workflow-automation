@@ -150,6 +150,17 @@ test('Booking Phase 1 business setup', async (t) => {
       assert.equal((await db.staff.findUniqueOrThrow({ where: { id: person.id } })).active, false);
       assert.equal(await db.availabilitySlot.count({ where: { staffId: person.id } }), countBefore);
     } finally { await db.staff.update({ where: { id: person.id }, data: { active: true } }); }
+    const future = businessDayBounds('2040-01-02', 'Australia/Brisbane').start;
+    const closureStart = new Date(+future + 9 * 3600000); const closureEnd = new Date(+closureStart + 1800000);
+    await db.availabilitySlot.updateMany({ where: { staffId: person.id, startAt: closureStart }, data: { state: 'BLOCKED' } });
+    const closure = await db.scheduleClosure.create({ data: { businessId: first.businessId, staffId: person.id, startAt: closureStart, endAt: closureEnd } });
+    try {
+      await seedBusinessSetup(db, passwordHash, new Date('2040-01-02T00:00:00Z'), '2040-01-02');
+      const covered = await db.availabilitySlot.findFirstOrThrow({ where: { staffId: person.id, startAt: closureStart } });
+      assert.equal(covered.state, 'BLOCKED', 'Seeds must respect persistent closures for future inventory.');
+      await seedBusinessSetup(db, passwordHash, new Date('2040-01-02T00:00:00Z'), '2040-01-02');
+      assert.equal((await db.availabilitySlot.findUniqueOrThrow({ where: { id: covered.id } })).state, 'BLOCKED');
+    } finally { await db.scheduleClosure.delete({ where: { id: closure.id } }); }
   });
 });
 

@@ -6,6 +6,7 @@ import { configuredExtractor } from './ai-config.js';
 import { IntentUnavailable, type ExtractionInput } from './intent.js';
 import { LOCAL_MODEL, localBaseUrl, OllamaIntentExtractor, validatePreferences } from './ollama-intent.js';
 import { normalizeBookingInput, spellingDistance } from './booking-text.js';
+import { resolveNumericBookingDate } from './booking-date.js';
 
 const serviceId = 'c27a63c1-2459-47bb-8d5c-f3fc15bd1ddd';
 const staffId = '8c21b672-d7ac-4dd1-805d-bd37bad90483';
@@ -39,6 +40,21 @@ test('AI validation grounds evidence, scopes names and resolves business-local d
   for (const [text, date] of [['day after tomorrow', '2026-11-21'], ['in two days', '2026-11-21'], ['25-11-2026', '2026-11-25']]) {
     assert.equal(validatePreferences({ ...base, message: base.message.replace('tomorrow', text!) }, { ...raw, dateText: text }).selection.date, date);
   }
+});
+
+test('AI yearless date evidence uses the same deterministic year policy and rejects omission or alternatives', () => {
+  for (const [text, expected] of [['22-11', '2026-11-22'], ['22-04', '2027-04-22'], ['22-4', '2027-04-22'], ['19-11', '2026-11-19']]) {
+    const input = { ...base, message: base.message.replace('tomorrow', text!) };
+    const result = validatePreferences(input, { ...raw, dateText: text }); assert.equal(result.selection.date, expected); assert.deepEqual(result.needsClarification, []); assert.match(result.message, /Using/);
+    assert.ok(validatePreferences(input, { ...raw, dateText: null }).needsClarification.includes('date'));
+  }
+  const input = { ...base, message: 'Haircut 22-11 or 22-4 for one hour with Alex' };
+  assert.equal(validatePreferences(input, { ...raw, dateText: '22-11' }).selection.date, null);
+  assert.throws(() => validatePreferences({ ...base, message: 'Haircut 22-11 for one hour with Alex' }, { ...raw, dateText: '22-11-2026' }), unavailable('invalid_output'));
+  assert.equal(resolveNumericBookingDate('29-2', '2027-03-01'), '2028-02-29');
+  assert.equal(resolveNumericBookingDate('29-2', '2027-01-01'), null, 'Do not skip arbitrary years to find a valid date.');
+  assert.equal(resolveNumericBookingDate('29-2', '2028-02-29'), '2028-02-29');
+  assert.equal(resolveNumericBookingDate('1-1', '2100-12-31'), null, 'Respect the supported calendar range.');
 });
 
 test('AI validation rejects authority, invented evidence and invalid raw types', () => {
@@ -77,14 +93,14 @@ test('AI clarification turns merge only scoped valid context and can choose any 
   assert.deepEqual(result.needsClarification, []);
 });
 
-test('bounded typo normalization accepts common date/unit spellings and discloses the correction', () => {
+test('bounded typo normalization accepts common date/unit spellings without correction notices', () => {
   for (const typo of ['tommorow', 'tommorrow', 'tomorow', 'tomorroww', 'TOMMOROW', 'tomoral', 'tomorrrow']) {
     const result = validatePreferences({ ...base, message: `Haircut ${typo} for 30 minuites with Alex` }, { ...raw, durationText: '30 minutes' });
     assert.equal(result.selection.date, '2026-11-20');
     assert.equal(result.selection.durationMinutes, 30);
     assert.equal(result.selection.staffId, staffId);
     assert.deepEqual(result.needsClarification, []);
-    assert.match(result.message, /Spelling adjusted:/);
+    assert.doesNotMatch(result.message, /Spelling adjusted|→/);
     assert.match(result.message, /Nothing is booked yet/);
   }
   assert.equal(validatePreferences({ ...base, message: 'Haircut day after tommorow for two huors with Alex' }, { ...raw, dateText: 'day after tomorrow', durationText: 'two hours' }).selection.date, '2026-11-21');
@@ -125,7 +141,6 @@ test('typo handling preserves catalog labels, unknown words, numbers, dates and 
   assert.equal(normalizeBookingInput({ ...base, message }).input.message,
     'Aelx Hairct 31-02-2027 45 minutes tommorow123 étommorow constructor __proto__');
   const protectedName = normalizeBookingInput({ ...base, message: 'Haircut with Tommorow for 30 minutes', staff: [{ id: staffId, name: 'Tommorow' }] });
-  assert.equal(protectedName.notice, '');
   assert.equal(protectedName.input.message, 'Haircut with Tommorow for 30 minutes');
   const unsupported = validatePreferences({ ...base, message: 'Haircut tommorow for 45 minuites with Alex' }, { ...raw, durationText: '45 minutes' });
   assert.ok(unsupported.needsClarification.includes('duration'));
@@ -182,8 +197,8 @@ test('Ollama receives canonical typo text and validates evidence against only th
   }, async (baseUrl) => {
     const result = await new OllamaIntentExtractor({ baseUrl, timeoutMs: 1000 }).extract({ ...base, message: 'Haircut tommorow for 30 minuites with Alex' });
     assert.deepEqual(result.needsClarification, []);
-    assert.match(result.message, /tommorow → tomorrow/);
-    assert.match(result.message, /minuites → minutes/);
+    assert.doesNotMatch(result.message, /Spelling adjusted|tommorow|→/);
+    assert.doesNotMatch(result.message, /minuites/);
   });
 });
 

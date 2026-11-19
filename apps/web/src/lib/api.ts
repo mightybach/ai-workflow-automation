@@ -6,7 +6,7 @@ export class ApiFailure extends Error {
 export async function apiRequest<T>(path: string, schema: {
   safeParse(value: unknown): { success: true; data: T } | { success: false };
 }, options: {
-  method?: 'GET' | 'POST'; body?: unknown; idempotencyKey?: string; signal?: AbortSignal; timeoutMs?: number;
+  method?: 'GET' | 'POST' | 'PUT'; body?: unknown; idempotencyKey?: string; signal?: AbortSignal; timeoutMs?: number;
 } = {}): Promise<T> {
   let response: Response;
   const timeout = AbortSignal.timeout(options.timeoutMs ?? 15000);
@@ -15,7 +15,7 @@ export async function apiRequest<T>(path: string, schema: {
       method: options.method ?? 'GET', credentials: 'same-origin',
       headers: {
         ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-        ...(options.method === 'POST' ? { 'X-Flowpilot-Client': 'web' } : {}),
+        ...(options.method && options.method !== 'GET' ? { 'X-Flowpilot-Client': 'web' } : {}),
         ...(options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : {}),
       },
       ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),

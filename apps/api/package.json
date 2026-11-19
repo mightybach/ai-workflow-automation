@@ -8,9 +8,9 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node --env-file-if-exists=../../.env dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test src/app.test.ts src/business-time.test.ts src/mock-intent.test.ts src/ollama-intent.test.ts",
+    "test": "tsx --test src/app.test.ts src/business-time.test.ts src/schedule-time.test.ts src/mock-intent.test.ts src/ollama-intent.test.ts",
     "eval:ai": "node scripts/evaluate-local-ai.mjs",
-    "test:integration": "node --env-file-if-exists=../../.env --import tsx --test src/phase1.integration.test.ts src/business.integration.test.ts src/booking-schema.integration.test.ts src/customer.integration.test.ts src/booking-proposal.integration.test.ts src/booking.integration.test.ts src/booking-http.integration.test.ts src/customer-chat.integration.test.ts"
+    "test:integration": "node --env-file-if-exists=../../.env --import tsx --test src/phase1.integration.test.ts src/business.integration.test.ts src/business-settings.integration.test.ts src/schedule.integration.test.ts src/schedule-policy.integration.test.ts src/booking-cancellation.integration.test.ts src/booking-reschedule.integration.test.ts src/booking-admin.integration.test.ts src/booking-schema.integration.test.ts src/customer.integration.test.ts src/booking-proposal.integration.test.ts src/booking.integration.test.ts src/booking-http.integration.test.ts src/customer-chat.integration.test.ts"
   },
   "dependencies": {
     "@flowpilot/contracts": "workspace:*",

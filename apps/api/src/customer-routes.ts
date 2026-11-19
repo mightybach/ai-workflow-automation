@@ -6,11 +6,13 @@ import {
   CustomerAvailabilityResponseSchema, CUSTOMER_SESSION_TTL_SECONDS,
   LogoutResponseSchema, ServiceListResponseSchema, StaffListResponseSchema,
   CreateBookingProposalBodySchema, IdempotencyHeadersSchema,
-  ConfirmBookingBodySchema, IdParamsSchema,
+  ConfirmBookingBodySchema, CancelBookingBodySchema, RescheduleBookingBodySchema, IdParamsSchema,
 } from '@flowpilot/contracts';
 import { ApiError } from './errors.js';
 import { createBookingProposal } from './booking-proposal-service.js';
 import { confirmBooking, bookingDto } from './booking-service.js';
+import { cancelBooking } from './booking-cancellation.js';
+import { rescheduleBooking } from './booking-reschedule.js';
 import {
   customerCookieName, customerCookieOptions, customerScope, customerSessionDto,
   customerTokenHash, newCustomerToken, requestCustomerToken,
@@ -24,6 +26,29 @@ function input<T extends z.ZodType>(schema: T, value: unknown): z.output<T> {
 }
 export function customerRoutes(app: FastifyInstance, db: PrismaClient, clock: () => Date) {
   const readLimit = { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } };
+  app.post('/api/v1/customer/bookings/:id/reschedule-proposals', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
+    input(emptyInput, request.query); const { id } = input(IdParamsSchema, request.params);
+    const body = input(CreateBookingProposalBodySchema, request.body);
+    const key = input(IdempotencyHeadersSchema, { 'idempotency-key': request.headers['idempotency-key'] })['idempotency-key'];
+    const result = await createBookingProposal(db, request, body, key, clock, id);
+    return reply.code(result.replayed ? 200 : 201).send(result.proposal);
+  });
+  app.post('/api/v1/customer/bookings/:id/reschedule', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
+    input(emptyInput, request.query); const { id } = input(IdParamsSchema, request.params);
+    const body = input(RescheduleBookingBodySchema, request.body);
+    const key = input(IdempotencyHeadersSchema, { 'idempotency-key': request.headers['idempotency-key'] })['idempotency-key'];
+    const result = await rescheduleBooking(db, request, id, body.proposalId, key, clock);
+    reply.header('Idempotency-Replayed', String(result.replayed)); return result.booking;
+  });
+  app.post('/api/v1/customer/bookings/:id/cancel', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
+    input(emptyInput, request.query);
+    const { id } = input(IdParamsSchema, request.params);
+    input(CancelBookingBodySchema, request.body);
+    const headers = input(IdempotencyHeadersSchema, { 'idempotency-key': request.headers['idempotency-key'] });
+    const result = await cancelBooking(db, request, id, headers['idempotency-key'], clock);
+    reply.header('Idempotency-Replayed', String(result.replayed));
+    return result.booking;
+  });
   app.post('/api/v1/customer/bookings', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     input(emptyInput, request.query);
     const body = input(ConfirmBookingBodySchema, request.body);
@@ -121,6 +146,11 @@ export function customerRoutes(app: FastifyInstance, db: PrismaClient, clock: ()
     const now = clock();
     return db.$transaction(async (tx) => {
       const session = await customerScope(tx, request, now);
+      if (query.rescheduleBookingId) {
+        const original = await tx.booking.findFirst({ where: { id: query.rescheduleBookingId, businessId: session.businessId, sessionId: session.id }, include: { proposal: true } });
+        if (!original) throw new ApiError(404, 'NOT_FOUND', 'Booking not found.');
+        if (original.status !== 'CONFIRMED' || original.proposal.startAt <= now) throw new ApiError(409, 'BOOKING_NOT_CHANGEABLE', 'Choose a future confirmed booking to reschedule.');
+      }
       const service = await tx.service.findFirst({ where: { id: query.serviceId, businessId: session.businessId, active: true } });
       if (!service) throw new ApiError(404, 'NOT_FOUND', 'Service not found.');
       if (query.staffId && !await tx.staff.findFirst({ where: { id: query.staffId, businessId: session.businessId, active: true } })) {
@@ -140,13 +170,13 @@ export function customerRoutes(app: FastifyInstance, db: PrismaClient, clock: ()
           ON employee.id = first."staffId" AND employee."businessId" = first."businessId" AND employee.active
         WHERE first."businessId" = ${session.businessId}::uuid
           AND first."startAt" >= ${bounds.start} AND first."startAt" < ${bounds.end}
-          AND first."startAt" > ${now} AND first.state = 'AVAILABLE' ${staffFilter}
+          AND first."startAt" > ${now} AND (first.state = 'AVAILABLE' ${query.rescheduleBookingId ? Prisma.sql`OR (first.state = 'RESERVED' AND EXISTS (SELECT 1 FROM "BookingSlot" c WHERE c."slotId" = first.id AND c."bookingId" = ${query.rescheduleBookingId}::uuid AND c."releasedAt" IS NULL))` : Prisma.empty}) ${staffFilter}
           AND (SELECT count(*) FROM "AvailabilitySlot" part
             WHERE part."businessId" = first."businessId" AND part."staffId" = first."staffId"
               AND part."startAt" >= first."startAt"
               AND part."startAt" < first."startAt" + ${query.durationMinutes} * INTERVAL '1 minute'
-              AND part.state = 'AVAILABLE'
-              AND NOT EXISTS (SELECT 1 FROM "BookingSlot" claim WHERE claim."slotId" = part.id AND claim."releasedAt" IS NULL)
+              AND (part.state = 'AVAILABLE' ${query.rescheduleBookingId ? Prisma.sql`OR (part.state = 'RESERVED' AND EXISTS (SELECT 1 FROM "BookingSlot" c WHERE c."slotId" = part.id AND c."bookingId" = ${query.rescheduleBookingId}::uuid AND c."releasedAt" IS NULL))` : Prisma.empty})
+              AND NOT EXISTS (SELECT 1 FROM "BookingSlot" claim WHERE claim."slotId" = part.id AND claim."releasedAt" IS NULL ${query.rescheduleBookingId ? Prisma.sql`AND claim."bookingId" <> ${query.rescheduleBookingId}::uuid` : Prisma.empty})
           ) = ${query.durationMinutes / 30}
       )`;
       const counts = await tx.$queryRaw<{ total: bigint }[]>(Prisma.sql`${eligible} SELECT count(*) AS total FROM eligible`);

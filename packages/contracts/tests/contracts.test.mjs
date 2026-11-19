@@ -246,3 +246,67 @@ test('chat responses identify mock/local AI but reject model authority and unkno
     assert.equal(bookingContracts.CustomerChatResponseSchema.safeParse({ ...response, ...patch }).success, false);
   }
 });
+
+test('business settings require strict duration/revision and reject client ownership or role overrides', () => {
+  const { BusinessBookingSettingsSchema: response, UpdateBusinessBookingSettingsSchema: body } = bookingContracts;
+  assert.equal(response.safeParse({ businessId: id, maxBookingDurationMinutes: 120, updatedAt: timestamp }).success, true);
+  for (const minutes of [30, 60, 120, 1440]) assert.equal(body.safeParse({ maxBookingDurationMinutes: minutes, expectedUpdatedAt: timestamp }).success, true);
+  for (const minutes of [0, 15, 45, 1470, 60.5, '60', null, true]) assert.equal(body.safeParse({ maxBookingDurationMinutes: minutes, expectedUpdatedAt: timestamp }).success, false);
+  for (const patch of [{ businessId: id }, { role: 'OWNER' }, { actorId: id }, { timezone: 'UTC' }, { expectedUpdatedAt: undefined }, { expectedUpdatedAt: 'yesterday' }]) {
+    assert.equal(body.safeParse({ maxBookingDurationMinutes: 60, expectedUpdatedAt: timestamp, ...patch }).success, false);
+  }
+});
+
+test('schedule contracts bound existing-slot edits and reject duplicates, reservations and scope overrides', () => {
+  const { ScheduleQuerySchema: query, UpdateScheduleSchema: update, ScheduleChangeResponseSchema: response } = bookingContracts;
+  assert.equal(query.safeParse({ date: '2030-01-08', staffId: id }).success, true);
+  assert.equal(query.safeParse({ date: '2030-01-08', businessId: id }).success, false);
+  const body = { slotIds: [id], state: 'BLOCKED', expectedUpdatedAt: timestamp };
+  for (const state of ['BLOCKED', 'AVAILABLE']) assert.equal(update.safeParse({ ...body, state }).success, true);
+  for (const patch of [{ slotIds: [] }, { slotIds: [id, id.toUpperCase()] }, { slotIds: Array(501).fill(id) }, { state: 'RESERVED' },
+    { expectedUpdatedAt: undefined }, { businessId: id }, { staffId: id }, { role: 'OWNER' }, { startAt: timestamp }]) {
+    assert.equal(update.safeParse({ ...body, ...patch }).success, false);
+  }
+  assert.equal(response.safeParse({ businessId: id, updatedAt: timestamp, state: 'BLOCKED', selectedCount: 2, changedCount: 1 }).success, true);
+  assert.equal(response.safeParse({ businessId: id, updatedAt: timestamp, state: 'BLOCKED', selectedCount: 1, changedCount: 2 }).success, false);
+});
+
+test('dated working time/closures accept only local half-hour windows and trusted revision', () => {
+  const body = { date: '2030-01-08', staffId: id, startMinute: 540, endMinute: 1020, expectedUpdatedAt: timestamp };
+  assert.equal(bookingContracts.AddWorkingTimeSchema.safeParse(body).success, true);
+  assert.equal(bookingContracts.CreateClosureSchema.safeParse({ ...body, staffId: null, startMinute: 0, endMinute: 1440 }).success, true);
+  for (const patch of [{ startMinute: 541 }, { startMinute: 1020 }, { endMinute: 1470 }, { date: '2030-02-30' }, { staffId: null }, { businessId: id }, { timezone: 'UTC' }, { expectedUpdatedAt: undefined }]) {
+    assert.equal(bookingContracts.AddWorkingTimeSchema.safeParse({ ...body, ...patch }).success, false);
+  }
+  assert.equal(bookingContracts.ReleaseClosureSchema.safeParse({ closureId: id, expectedUpdatedAt: timestamp }).success, true);
+});
+
+test('cancellation has strict dedicated input, consistent status/timestamp and bound recovery data', () => {
+  assert.equal(bookingContracts.CancelBookingBodySchema.safeParse({}).success, true);
+  for (const body of [{ confirmed: true }, { status: 'CANCELLED' }, { businessId: id }, { reason: 'raw text' }, { bookingId: id }]) assert.equal(bookingContracts.CancelBookingBodySchema.safeParse(body).success, false);
+  const booking = { ...selection, id, reference: 'FP-DEMO-001', status: 'CANCELLED', customer, createdAt: timestamp, cancelledAt: timestamp };
+  assert.equal(bookingContracts.BookingResponseSchema.safeParse(booking).success, true);
+  assert.equal(bookingContracts.BookingResponseSchema.safeParse({ ...booking, cancelledAt: null }).success, false);
+  assert.equal(bookingContracts.BookingResponseSchema.safeParse({ ...booking, status: 'CONFIRMED' }).success, false);
+  assert.equal(bookingContracts.BookingResponseSchema.parse({ ...booking, status: 'CONFIRMED', cancelledAt: undefined }).cancelledAt, null, 'Old immutable confirmation snapshots remain readable.');
+  const draft = { businessId: id, sessionExpiresAt: timestamp, bookingId: id, confirmation: null,
+    proposal: { key: 'proposal', body: { slotId: id, serviceId: runId, durationMinutes: 30 } }, cancellation: { key: 'cancel', bookingId: id } };
+  assert.equal(bookingContracts.CustomerBookingDraftSchema.safeParse(draft).success, true);
+  assert.equal(bookingContracts.CustomerBookingDraftSchema.safeParse({ ...draft, cancellation: { key: 'cancel', bookingId: runId } }).success, false);
+});
+
+test('rescheduling binds selection/recovery and rejects authority; admin reads remain strictly scoped', () => {
+  assert.equal(bookingContracts.RescheduleBookingBodySchema.safeParse({ proposalId: id }).success, true);
+  for (const patch of [{ confirmed: true }, { bookingId: runId }, { customer: {} }, { businessId: id }]) assert.equal(bookingContracts.RescheduleBookingBodySchema.safeParse({ proposalId: id, ...patch }).success, false);
+  assert.equal(bookingContracts.CustomerAvailabilityQuerySchema.safeParse({ date: '2030-01-08', serviceId: id, durationMinutes: '60', rescheduleBookingId: runId }).success, true);
+  for (const schema of [bookingContracts.AdminBookingQuerySchema, bookingContracts.AdminAuditQuerySchema]) {
+    assert.equal(schema.safeParse({ date: '2030-01-08', pageSize: '10' }).success, true);
+    for (const patch of [{ businessId: id }, { role: 'OWNER' }, { pageSize: '51' }, { date: '2030-02-30' }]) assert.equal(schema.safeParse(patch).success, false);
+  }
+  const proposal = { key: 'proposal', body: { slotId: id, serviceId: runId, durationMinutes: 60 } };
+  const draft = { businessId: id, sessionExpiresAt: timestamp, bookingId: id, confirmation: null, proposal,
+    rescheduling: { originalBookingId: id, proposal, confirmation: { key: 'move', proposalId: runId } } };
+  assert.equal(bookingContracts.CustomerBookingDraftSchema.safeParse(draft).success, true);
+  assert.equal(bookingContracts.CustomerBookingDraftSchema.safeParse({ ...draft, rescheduling: { ...draft.rescheduling, originalBookingId: runId } }).success, false);
+  assert.equal(bookingContracts.CustomerBookingDraftSchema.safeParse({ ...draft, cancellation: { key: 'cancel', bookingId: id } }).success, false);
+});

@@ -11,7 +11,7 @@ const hashToken = (token: string) => createHash('sha256').update(token).digest('
 const dummyHash = hashPassword(randomBytes(32).toString('hex'));
 export type Actor = { id: string; email: string; role: Role; isActive: boolean; createdAt: Date; updatedAt: Date };
 
-export function authentication(db: PrismaClient) {
+export function authentication(db: Pick<PrismaClient, 'session'>) {
   return async (request: FastifyRequest): Promise<Actor> => {
     const token = request.cookies[cookieName];
     if (!token || !/^[a-f0-9]{64}$/.test(token)) throw new ApiError(401, 'UNAUTHENTICATED', 'Sign in to continue.');

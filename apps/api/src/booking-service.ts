@@ -14,6 +14,8 @@ export function bookingDto(booking: SavedBooking) {
     serviceName: proposal.serviceName, staffName: proposal.staffName, durationMinutes: proposal.durationMinutes,
     startAt: proposal.startAt.toISOString(), endAt: proposal.endAt.toISOString(), timezone: proposal.timezone,
     customer: { name: booking.customerName, email: booking.customerEmail }, createdAt: booking.createdAt.toISOString(),
+    cancelledAt: booking.cancelledAt?.toISOString() ?? null,
+    rescheduledFromId: proposal.rescheduleOfId,
   });
 }
 
@@ -47,6 +49,7 @@ export async function confirmBooking(
         AND "businessId" = ${session.businessId}::uuid AND "sessionId" = ${session.id}::uuid FOR UPDATE`);
     if (owned.length !== 1) throw new ApiError(404, 'NOT_FOUND', 'Proposal not found.');
     const proposal = await tx.bookingProposal.findUniqueOrThrow({ where: { id: proposalId }, include: { booking: true } });
+    if (proposal.rescheduleOfId) throw new ApiError(409, 'BOOKING_NOT_CHANGEABLE', 'Use the dedicated rescheduling confirmation for this proposal.');
     if (proposal.booking) throw new ApiError(409, 'PROPOSAL_ALREADY_USED', 'This proposal already created an appointment.');
     await tx.$queryRaw(Prisma.sql`SELECT id FROM "Service" WHERE id = ${proposal.serviceId}::uuid AND "businessId" = ${session.businessId}::uuid FOR SHARE`);
     await tx.$queryRaw(Prisma.sql`SELECT id FROM "Staff" WHERE id = ${proposal.staffId}::uuid AND "businessId" = ${session.businessId}::uuid FOR SHARE`);

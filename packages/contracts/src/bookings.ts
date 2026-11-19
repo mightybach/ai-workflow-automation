@@ -22,6 +22,7 @@ export const CustomerSessionResponseSchema = z.object({
 export const CustomerCatalogQuerySchema = PaginationQuerySchema;
 export const CustomerAvailabilityQuerySchema = PaginationQuerySchema.extend({
   date: BusinessDateSchema, serviceId: IdSchema, staffId: IdSchema.optional(), durationMinutes: durationQuery,
+  rescheduleBookingId: IdSchema.optional(),
 }).strict();
 
 const AppointmentSelectionSchema = z.object({
@@ -45,6 +46,7 @@ export const CreateBookingProposalBodySchema = z.object({
 }).strict();
 export const BookingProposalResponseSchema = AppointmentSelectionSchema.extend({
   id: IdSchema, createdAt: TimestampSchema, expiresAt: TimestampSchema,
+  rescheduleOfId: IdSchema.nullable().default(null),
 }).strict().refine(fixedSlot, 'Use an aligned appointment matching its duration.')
   .refine((value) => Date.parse(value.expiresAt) > Date.parse(value.createdAt), 'Expiry must follow creation.');
 
@@ -58,16 +60,22 @@ export const SyntheticCustomerSchema = z.object({
 export const ConfirmBookingBodySchema = z.object({
   proposalId: IdSchema, customer: SyntheticCustomerSchema,
 }).strict();
-export const BookingStatusSchema = z.enum(['CONFIRMED']);
+export const CancelBookingBodySchema = z.object({}).strict();
+export const RescheduleBookingBodySchema = z.object({ proposalId: IdSchema }).strict();
+export const BookingStatusSchema = z.enum(['CONFIRMED', 'CANCELLED']);
 export const BookingResponseSchema = AppointmentSelectionSchema.extend({
   id: IdSchema, reference: z.string().min(1).max(64).regex(/^[A-Z0-9-]+$/),
   status: BookingStatusSchema, customer: SyntheticCustomerSchema, createdAt: TimestampSchema,
-}).strict().refine(fixedSlot, 'Use an aligned appointment matching its duration.');
+  // Older persisted confirmation snapshots omitted this field.
+  cancelledAt: TimestampSchema.nullable().default(null),
+  rescheduledFromId: IdSchema.nullable().default(null),
+}).strict().refine(fixedSlot, 'Use an aligned appointment matching its duration.')
+  .refine((value) => value.status === 'CANCELLED' ? value.cancelledAt !== null : value.cancelledAt === null, 'Cancellation requires its server timestamp.');
 
 export const BookingErrorCodeSchema = z.enum([
   'VALIDATION_ERROR', 'UNAUTHENTICATED', 'NOT_FOUND', 'PROPOSAL_EXPIRED',
   'PROPOSAL_ALREADY_USED', 'SLOT_UNAVAILABLE', 'SELECTION_UNAVAILABLE',
-  'DURATION_NOT_ALLOWED', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'INTERNAL_ERROR',
+  'DURATION_NOT_ALLOWED', 'IDEMPOTENCY_CONFLICT', 'RATE_LIMITED', 'INTERNAL_ERROR', 'CANCELLATION_TOO_LATE', 'BOOKING_NOT_CHANGEABLE',
 ]);
 export const BookingErrorResponseSchema = ApiErrorSchema.extend({ code: BookingErrorCodeSchema }).strict();
 
@@ -80,6 +88,7 @@ export type CustomerAvailabilityResponse = z.infer<typeof CustomerAvailabilityRe
 export type CreateBookingProposalBody = z.infer<typeof CreateBookingProposalBodySchema>;
 export type BookingProposalResponse = z.infer<typeof BookingProposalResponseSchema>;
 export type ConfirmBookingBody = z.infer<typeof ConfirmBookingBodySchema>;
+export type CancelBookingBody = z.infer<typeof CancelBookingBodySchema>;
 export type BookingResponse = z.infer<typeof BookingResponseSchema>;
 export type BookingStatus = z.infer<typeof BookingStatusSchema>;
 export type BookingErrorResponse = z.infer<typeof BookingErrorResponseSchema>;

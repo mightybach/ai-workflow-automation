@@ -63,7 +63,7 @@ function App() {
           <button className={view === 'business' ? '' : 'secondary'} aria-pressed={view === 'business'} onClick={() => setView('business')}>Business setup</button>
           <button className={view === 'legacy' ? '' : 'secondary'} aria-pressed={view === 'legacy'} onClick={() => setView('legacy')}>Legacy requests</button>
         </nav>
-        {view === 'business' ? <BusinessDashboard key={user.id} /> : <PersistedRequests key={user.id} user={user} />}
+        {view === 'business' ? <BusinessDashboard key={user.id} actorId={user.id} /> : <PersistedRequests key={user.id} user={user} />}
       </> : <LoginForm onSignIn={(signedIn) => { setAuthError(''); setView('business'); setUser(signedIn); }} />}
       <section aria-labelledby="foundation-title">
         <span className="badge">Phase 0</span>
@@ -72,7 +72,7 @@ function App() {
         <button onClick={() => { setStatus('Checking API connection…'); setAttempt(attempt + 1); }}>
           Check connection
         </button>
-        <p className="note">Synthetic data only. Customer booking and mock chat are at /book. AI is planned.</p>
+        <p className="note">Synthetic data only. Customer booking and the optional local AI assistant are at /book.</p>
       </section>
     </main>
   );

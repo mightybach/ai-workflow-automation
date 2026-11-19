@@ -9,10 +9,11 @@ import { ApiError } from './errors.js';
 
 export async function createBookingProposal(
   db: PrismaClient, request: FastifyRequest, body: CreateBookingProposalBody,
-  idempotencyKey: string, clock: () => Date,
+  idempotencyKey: string, clock: () => Date, rescheduleOfId?: string,
 ) {
   const input = { slotId: body.slotId.toLowerCase(), serviceId: body.serviceId.toLowerCase(), durationMinutes: body.durationMinutes };
-  const fingerprint = createHash('sha256').update(JSON.stringify(['proposal:v1', input.slotId, input.serviceId, input.durationMinutes])).digest('hex');
+  const sourceId = rescheduleOfId?.toLowerCase();
+  const fingerprint = createHash('sha256').update(JSON.stringify(sourceId ? ['reschedule-proposal:v1', sourceId, input.slotId, input.serviceId, input.durationMinutes] : ['proposal:v1', input.slotId, input.serviceId, input.durationMinutes])).digest('hex');
   return db.$transaction(async (tx) => {
     const initial = await customerScope(tx, request, clock());
     // Serialize one scoped operation key across API instances. This is not an
@@ -37,6 +38,11 @@ export async function createBookingProposal(
       }
       return { proposal: BookingProposalResponseSchema.parse(existing.response), replayed: true };
     }
+    if (sourceId) {
+      const original = await tx.booking.findFirst({ where: { id: sourceId, businessId: session.businessId, sessionId: session.id }, include: { proposal: true } });
+      if (!original) throw new ApiError(404, 'NOT_FOUND', 'Booking not found.');
+      if (original.status !== 'CONFIRMED' || original.proposal.startAt <= now) throw new ApiError(409, 'BOOKING_NOT_CHANGEABLE', 'Choose a future confirmed booking to reschedule.');
+    }
     const service = await tx.service.findFirst({ where: { id: input.serviceId, businessId: session.businessId, active: true } });
     if (!service) throw new ApiError(404, 'NOT_FOUND', 'Service not found.');
     const first = await tx.availabilitySlot.findFirst({
@@ -47,26 +53,26 @@ export async function createBookingProposal(
       throw new ApiError(409, 'DURATION_NOT_ALLOWED', 'Choose a duration within the current business maximum.');
     }
     const endAt = new Date(+first.startAt + input.durationMinutes * 60000);
-    if (first.startAt <= now || first.state !== 'AVAILABLE') {
+    if (first.startAt <= now) {
       throw new ApiError(409, 'SLOT_UNAVAILABLE', 'Choose a future available appointment.');
     }
     const count = await tx.availabilitySlot.count({ where: {
       businessId: session.businessId, staffId: first.staffId,
-      startAt: { gte: first.startAt, lt: endAt }, state: 'AVAILABLE',
-      bookingSlots: { none: { releasedAt: null } },
+      startAt: { gte: first.startAt, lt: endAt },
+      OR: [{ state: 'AVAILABLE', bookingSlots: { none: { releasedAt: null } } }, ...(sourceId ? [{ state: 'RESERVED' as const, bookingSlots: { some: { bookingId: sourceId, releasedAt: null }, none: { bookingId: { not: sourceId }, releasedAt: null } } }] : [])],
     } });
     if (count !== input.durationMinutes / 30) {
       throw new ApiError(409, 'SLOT_UNAVAILABLE', 'The full appointment is unavailable. Refresh availability.');
     }
     const saved = await tx.bookingProposal.create({ data: {
-      businessId: session.businessId, sessionId: session.id,
+      businessId: session.businessId, sessionId: session.id, rescheduleOfId: sourceId ?? null,
       serviceId: service.id, staffId: first.staffId, slotId: first.id,
       durationMinutes: input.durationMinutes, startAt: first.startAt, endAt,
       timezone: session.business.timezone, serviceName: service.name, staffName: first.staff.displayName,
       createdAt: now, expiresAt: new Date(+now + BOOKING_PROPOSAL_TTL_SECONDS * 1000),
     } });
     const proposal = BookingProposalResponseSchema.parse({
-      id: saved.id, businessId: saved.businessId, slotId: saved.slotId, serviceId: saved.serviceId,
+      id: saved.id, businessId: saved.businessId, slotId: saved.slotId, serviceId: saved.serviceId, rescheduleOfId: saved.rescheduleOfId,
       staffId: saved.staffId, serviceName: saved.serviceName, staffName: saved.staffName,
       durationMinutes: saved.durationMinutes, timezone: saved.timezone,
       startAt: saved.startAt.toISOString(), endAt: saved.endAt.toISOString(),

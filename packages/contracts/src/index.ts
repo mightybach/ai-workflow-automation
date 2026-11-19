@@ -8,3 +8,7 @@ export * from './auth.js';
 export * from './business.js';
 export * from './bookings.js';
 export * from './chat.js';
+export * from './business-settings.js';
+export * from './schedule.js';
+export * from './schedule-policy.js';
+export * from './booking-admin.js';

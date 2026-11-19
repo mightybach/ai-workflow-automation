@@ -8,7 +8,11 @@ import { ApiError } from './errors.js';
 import { authRoutes } from './auth.js';
 import { requestRoutes } from './request-routes.js';
 import { businessRoutes } from './business-routes.js';
+import { businessSettingsRoutes } from './business-settings.js';
+import { scheduleRoutes } from './schedule-routes.js';
+import { schedulePolicyRoutes } from './schedule-policy.js';
 import { customerRoutes } from './customer-routes.js';
+import { bookingAdminRoutes } from './booking-admin.js';
 import { customerChatRoutes } from './customer-chat-routes.js';
 import type { IntentExtractor } from './intent.js';
 
@@ -59,7 +63,11 @@ export function buildApp(options: { logger?: boolean; db?: PrismaClient; demoAut
       authRoutes(api, db, options.demoAuthEnabled ?? false);
       requestRoutes(api, db);
       businessRoutes(api, db, options.clock ?? (() => new Date()));
+      businessSettingsRoutes(api, db, options.clock ?? (() => new Date()));
+      scheduleRoutes(api, db, options.clock ?? (() => new Date()));
+      schedulePolicyRoutes(api, db, options.clock ?? (() => new Date()));
       customerRoutes(api, db, options.clock ?? (() => new Date()));
+      bookingAdminRoutes(api, db, options.clock ?? (() => new Date()));
       customerChatRoutes(api, db, options.clock ?? (() => new Date()), options.intentExtractor);
     });
   }
