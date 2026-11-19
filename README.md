@@ -4,13 +4,13 @@ FlowPilot Booking explores AI-assisted appointment booking and repetitive admini
 
 ## Why it exists
 
-Small businesses spend time answering availability questions and coordinating appointments. This project separates natural-language assistance from the rules that control availability, ownership and confirmation. PostgreSQL owns booking state; a future AI interpreter will only suggest intent and parameters.
+Small businesses spend time answering availability questions and coordinating appointments. This project separates natural-language assistance from the rules that control availability, ownership and confirmation. PostgreSQL owns booking state; the optional local AI interpreter only suggests intent and parameters.
 
 It is also a portfolio project for full-stack development, concurrency-safe reservations and reliable automation. No real customers, payments, external reservations or messages are involved.
 
 ## Current status
 
-**Phase 3 — customer booking UI and deterministic mock chat are implemented and locally validated.**
+**Phases 1–4 are implemented and locally validated, including optional Ollama intent extraction and manual fallback.**
 
 - Owner/staff dashboard with business-scoped staff, services and slot inventory.
 - Anonymous customer sessions, active service/staff lists and duration-aware availability.
@@ -21,7 +21,7 @@ It is also a portfolio project for full-stack development, concurrency-safe rese
 - UTC appointment instants, IANA business timezones and dd-mm-yyyy user-facing dates.
 - Retained legacy request demo with its original data and permissions.
 
-The web app includes the customer booking page at **http://127.0.0.1:5173/book**, the read-only business dashboard and legacy requests. The scripted mock assistant asks for missing details; it cannot book or confirm. Real AI is Phase 4. Cancellation, schedule/settings editors and notifications remain later work.
+The web app includes the customer booking page at **http://127.0.0.1:5173/book**, the read-only business dashboard and legacy requests. Choose the default scripted mock or optional local AI assistant; neither can book or confirm. Cancellation, schedule/settings editors and notifications remain later work.
 
 ## Run locally
 
@@ -76,10 +76,10 @@ Open **http://127.0.0.1:5173/book**, or choose **Book a synthetic appointment** 
 
 1. Choose an active service, future seeded weekday as **dd-mm-yyyy**, duration and optional staff. View actual available appointments and select one.
 2. Review the server proposal: service, staff, full interval, local timezone/UTC offset and five-minute expiry. Selection holds no slots.
-3. Keep the fictional name and example.test email; separately click **Confirm appointment**. Success shows the server reference.
+3. Keep the fictional name and example.test email; separately click **Confirm booking**. Success shows the server reference.
 4. Reload to restore the owned booking. After a lost response, **Retry same confirmation** preserves the exact key/details across reload and token rotation; it never creates a replacement automatically.
 
-The optional mock assistant accepts **Haircut tomorrow**, asks for duration, then accepts **60 minutes with Alex**. Choose **Use suggested details**, then query actual availability/select/review. Typing yes/confirm never books. Unknown or ambiguous requests, unsupported time expressions and cancellation/rescheduling require clarification/manual fallback.
+The optional mock assistant accepts **Haircut tomorrow**, asks for duration, then accepts **60 minutes with Alex**. Complete validated preferences automatically fill the form, including the named staff member. View available times, choose one, then review and click **Confirm booking**. Typing yes/confirm never books. Unknown or ambiguous requests, unsupported time expressions and cancellation/rescheduling require clarification/manual fallback.
 
 Chat transcript is browser-memory-only (20 entries), clears on reload/end/session rejection, and is never stored/logged by the server. A minimal synthetic retry draft lives in tab session storage; server replay/owned reads verify it. Ending the customer session removes access, not booking history. Confirmed appointments remain RESERVED: two base slots for 60 minutes, four for 120.
 
@@ -157,6 +157,22 @@ Browser checks cover dashboard/legacy requests and the customer flow: explicit c
 
 ## Scope and next phase
 
+See [the local AI setup guide](scripts/LOCAL_AI_SETUP.md) for Ollama and the exact `qwen3:4b-instruct-2507-q4_K_M` candidate. This development machine keeps runtime, models, temporary files and logs on D:. No model files, hosted provider, new application dependency or database migration are included in this feature.
+
+The default `.env.example` uses `AI_PROVIDER=mock`. For local AI, start Ollama, set these values in `.env`, then restart `pnpm dev`:
+
+```dotenv
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+AI_TIMEOUT_MS=20000
+```
+
+Only the API contacts the loopback model endpoint. The model returns verbatim preference evidence; strict Zod/semantic checks map active catalog names and resolve supported dates/durations through the server's business clock. Responses contain application-written text, never model-generated claims of availability or confirmation. Expiry/catalog changes, invalid output, busy runtime and timeouts require clarification or manual form fallback. There is one in-flight AI request per API process and no automatic mock retry.
+
+Use dd-mm-yyyy, today/tomorrow, day after tomorrow or in N days, and a numeric/word duration such as 60 minutes or one hour. Weekdays, time-of-day preferences, negation and alternatives currently require clarification/manual selection. A context-aware domain spell-checker compares date/unit words by insertion, deletion, substitution and adjacent-letter swaps, with bounded edit distance and a unique closest match. It handles unseen typos such as tomoral, tomorrrow and minuit and shows corrections in the reply. Units are matched only after a duration amount; catalog words, numbers and numeric dates are preserved. Ties and distant words require clarification. Availability questions reuse known chat preferences and fetch real starts from PostgreSQL; missing details are requested one at a time. Chat shows typing/checking feedback and a next-action summary. Only synthetic text is supported. Messages are sent to the API/local model; transcripts are not persisted by the app.
+
+Run `pnpm ai:evaluate` for the opt-in real-model synthetic evaluation. With the local app running in Ollama mode, `pnpm --filter @flowpilot/web test:ai:ui` checks the actual browser/API/model path. Default tests need no model. The Phase 4 baseline passed 22 fixed cases, with targeted unit/integration/real-browser coverage for later typo and conversation refinements; this small evaluation does not establish production accuracy, safety or load capacity. Low free RAM can prevent model loading; use the manual booking form or explicitly choose mock mode.
+
 This is a loopback-only development/test demo, not a public production booking service. Customer identity is session-based with no account recovery. Rate limits are local/in-memory; no production load or uptime claims are made. Current booking reads expose CONFIRMED lifecycle only. Arbitrary durations/alignment, multi-location, service-specific staff eligibility, cancellation/rescheduling, policy editors, retention/recovery workflows and integrations need later scoped work.
 
-**Next: Phase 4 validated local AI intent extraction behind the mock interface.** Admin changes follow in Phase 5; mock notification delivery in Phase 6. The backend stays a modular monolith until an actual need justifies extraction. The current mock supports a small English grammar, not arbitrary conversation; it has a 100-item service/staff catalog cap (manual lists cap at 1000), and no persisted transcript recovery. No real AI provider or delivery integration is installed.
+**Next: Phase 5 admin settings and booking changes.** Mock notification delivery follows in Phase 6. The backend stays a modular monolith until an actual need justifies extraction. The mock has a small English grammar; the AI path also deliberately limits supported preference forms. Chat has a 100-item catalog cap (manual lists cap at 1000), plus a stricter AI prompt-size budget and no persisted transcript recovery. No delivery integration or public production deployment is included.

@@ -5,7 +5,7 @@ import {
   ConfirmBookingBodySchema, CustomerBookingDraftSchema, CustomerChatResponseSchema, LogoutResponseSchema,
   type CustomerSessionResponse, type ServiceListResponse, type StaffListResponse,
   type CustomerAvailabilityResponse, type BookingProposalResponse, type BookingResponse,
-  type CustomerBookingDraft, type BookingPreferences, type CustomerChatResponse,
+  type CustomerBookingDraft, type BookingPreferences,
 } from '@flowpilot/contracts';
 import { apiRequest, ApiFailure, errorMessage } from '../../lib/api';
 
@@ -63,7 +63,11 @@ export function CustomerBookingPage() {
   const [now, setNow] = useState(Date.now());
   const [chatText, setChatText] = useState('');
   const [chat, setChat] = useState<{ sender: string; text: string }[]>([]);
-  const [suggestion, setSuggestion] = useState<CustomerChatResponse | null>(null);
+  const [chatPending, setChatPending] = useState<'typing' | 'availability' | null>(null);
+  const [chatReady, setChatReady] = useState(false);
+  const transcriptRef = useRef<HTMLOListElement | null>(null);
+  const appointmentsRef = useRef<HTMLDivElement | null>(null);
+  const reviewRef = useRef<HTMLElement | null>(null);
   const [preferences, setPreferences] = useState<BookingPreferences>(emptyPreferences);
 
   function remember(value: CustomerBookingDraft | null) { retain(value); setDraft(value); }
@@ -90,7 +94,7 @@ export function CustomerBookingPage() {
     const expired = () => {
       const hadSession = sessionRef.current !== null;
       sessionRef.current = null; setSession(null); setDraft(null); setProposal(null); setBooking(null);
-      setServices([]); setStaff([]); setAvailable(null); setChat([]); setSuggestion(null); setPreferences(emptyPreferences);
+      setServices([]); setStaff([]); setAvailable(null); setChat([]); setPreferences(emptyPreferences); setChatReady(false); setChatPending(null);
       try { retain(null); } catch { /* Access is still cleared when storage is unavailable. */ }
       if (hadSession) setError('Your customer session expired. Start a new session; no booking is inferred from chat or browser storage.');
     };
@@ -111,6 +115,15 @@ export function CustomerBookingPage() {
     const timer = window.setInterval(() => { void apiRequest('/customer/session', CustomerSessionResponseSchema).catch(() => { /* A 401 dispatches the scoped expiry event; network failures do not erase pending writes. */ }); }, 60000);
     return () => window.clearInterval(timer);
   }, [session?.expiresAt]);
+  useEffect(() => {
+    if (transcriptRef.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+  }, [chat, chatPending]);
+  useEffect(() => {
+    if (available) { appointmentsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); appointmentsRef.current?.focus({ preventScroll: true }); }
+  }, [available]);
+  useEffect(() => {
+    if (proposal) { reviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); reviewRef.current?.focus({ preventScroll: true }); }
+  }, [proposal]);
   async function refreshSetup() {
     setBusy(true); setError('');
     try { await establish(await apiRequest('/customer/session', CustomerSessionResponseSchema)); }
@@ -127,17 +140,22 @@ export function CustomerBookingPage() {
     setBusy(true); setError('');
     try {
       await apiRequest('/customer/logout', LogoutResponseSchema, { method: 'POST', body: {} });
-      sessionRef.current = null; setSession(null); clearSelection(); setChat([]); setPreferences(emptyPreferences); setSuggestion(null);
+      sessionRef.current = null; setSession(null); clearSelection(); setChat([]); setPreferences(emptyPreferences); setChatReady(false);
     } catch (cause) { setError(messageOf(cause)); }
     finally { setBusy(false); }
   }
-  async function search(page = 1) {
-    const parsed = parseDate(date);
+  async function search(page = 1, selection?: BookingPreferences) {
+    const parsed = selection ? BusinessDateSchema.safeParse(selection.date) : parseDate(date);
     if (!parsed.success) { setError('Enter a valid date as dd-mm-yyyy.'); return; }
     setBusy(true); setError(''); setAvailable(null);
-    const query = new URLSearchParams({ date: parsed.data, serviceId, durationMinutes: String(duration), page: String(page), pageSize: '10' });
-    if (staffId) query.set('staffId', staffId);
-    try { setAvailable(await apiRequest('/customer/availability?' + query, CustomerAvailabilityResponseSchema)); }
+    const chosenStaff = selection ? selection.staffId : staffId;
+    const query = new URLSearchParams({ date: parsed.data, serviceId: selection?.serviceId ?? serviceId, durationMinutes: String(selection?.durationMinutes ?? duration), page: String(page), pageSize: '10' });
+    if (chosenStaff) query.set('staffId', chosenStaff);
+    try {
+      const result = await apiRequest('/customer/availability?' + query, CustomerAvailabilityResponseSchema);
+      setAvailable(result);
+      return result;
+    }
     catch (cause) { setError(messageOf(cause)); }
     finally { setBusy(false); }
   }
@@ -179,20 +197,37 @@ export function CustomerBookingPage() {
     } finally { setBusy(false); }
   }
   async function sendChat() {
-    if (!chatText.trim()) return;
-    const text = chatText; setChatText(''); setBusy(true); setError('');
+    const activeSession = sessionRef.current;
+    if (!chatText.trim() || busy || draft || !activeSession) return;
+    const text = chatText; setChatText(''); setBusy(true); setChatPending('typing'); setChatReady(false); setError('');
     setChat((current) => [...current, { sender: 'You', text }].slice(-20));
     try {
-      const result = await apiRequest('/customer/chat/messages', CustomerChatResponseSchema, { method: 'POST', body: { message: text, context: preferences } });
-      setPreferences(result.selection); setSuggestion(result);
-      setChat((current) => [...current, { sender: 'Mock assistant', text: result.message }].slice(-20));
-    } catch (cause) { setError(messageOf(cause)); setSuggestion(null); }
-    finally { setBusy(false); }
-  }
-  function applySuggestion() {
-    if (!suggestion || suggestion.needsClarification.length) return;
-    const value = suggestion.selection;
-    setServiceId(value.serviceId ?? ''); setDate(value.date ? displayDate(value.date) : ''); setDuration(value.durationMinutes ?? 30); setStaffId(value.staffId ?? ''); setAvailable(null); setError('');
+      const result = await apiRequest('/customer/chat/messages', CustomerChatResponseSchema, { method: 'POST', body: { message: text, context: preferences }, timeoutMs: 35000 });
+      if (sessionRef.current !== activeSession) return;
+      if (!result.needsClarification.length) {
+        const value = result.selection;
+        if (!services.some((service) => service.id === value.serviceId) ||
+          value.staffId && !staff.some((person) => person.id === value.staffId) ||
+          !value.date || !value.durationMinutes || value.durationMinutes > activeSession.maxBookingDurationMinutes) {
+          throw new Error('Booking setup changed. Refresh customer setup before using these preferences.');
+        }
+        setServiceId(value.serviceId!); setDate(displayDate(value.date)); setDuration(value.durationMinutes); setStaffId(value.staffId ?? ''); setAvailable(null);
+        setChatReady(true);
+      }
+      setPreferences(result.selection);
+      setChat((current) => [...current, { sender: result.provider === 'ollama-v1' ? 'AI assistant' : 'Mock assistant', text: result.message }].slice(-20));
+      if (!result.needsClarification.length && result.intent === 'VIEW_AVAILABILITY') {
+        setChatPending('availability');
+        const actual = await search(1, result.selection);
+        if (actual && sessionRef.current === activeSession) {
+          const first = actual.items[0];
+          const text = first ? `I found ${actual.pagination.total} available starts matching your details. The first is ${localTime(first.startAt, first.timezone)} with ${first.staffName}. Choose a time below to review your booking. Availability can change.` :
+            'There are no available starts matching these details. Try another date, duration or staff member.';
+          setChat((current) => [...current, { sender: 'Booking assistant', text }].slice(-20));
+        }
+      }
+    } catch (cause) { setError(messageOf(cause)); }
+    finally { setBusy(false); setChatPending(null); }
   }
   const pending = !!draft?.confirmation && !booking;
   const expired = !!proposal && Date.parse(proposal.expiresAt) <= now;
@@ -202,7 +237,7 @@ export function CustomerBookingPage() {
     <p>Choose a real available time, review it, then confirm. This demo uses fictional customers only.</p>
     <a href="/">Staff dashboard</a>
     {error && <p role="alert" className="error">{error}</p>}
-    {busy && <p role="status">Working…</p>}
+    {busy && !chatPending && <p role="status">Working…</p>}
     {!session ? <section aria-labelledby="start-customer"><h2 id="start-customer">Start customer session</h2>
       <form onSubmit={(event) => { event.preventDefault(); void start(); }}>
         <label htmlFor="business-slug">Business</label><input id="business-slug" value={slug} disabled={busy} onChange={(event) => setSlug(event.target.value)} required />
@@ -217,18 +252,24 @@ export function CustomerBookingPage() {
         <p className="note">Keep this customer session to view the booking. Ending it removes access; the reference alone is not a login. Cancellation is not available yet.</p>
         <button onClick={clearSelection}>Book another appointment</button>
       </section> : <>
-        <section aria-labelledby="mock-chat"><h2 id="mock-chat">Mock booking assistant</h2>
-          <p className="note">Deterministic demo, not AI. Try “Haircut tomorrow for 60 minutes with Alex”. Messages stay in memory, up to 20 entries, and clear on reload/session end. Chat cannot confirm bookings.</p>
-          <ol className="chat-transcript" aria-label="Chat messages" aria-live="polite">{chat.map((item, index) => <li key={index}><strong>{item.sender}: </strong>{item.text}</li>)}</ol>
+        <section aria-labelledby="booking-chat"><h2 id="booking-chat">Booking assistant</h2>
+          <p className="note">Try “Haircut tomorrow for 30 minutes with Alex”. I’ll fill in the details and help you find a time. You review and confirm before anything is booked.</p>
+          <details className="note"><summary>About this demo</summary><p>Use fictional details only. Replies identify AI or mock mode. Messages go to the server and, in AI mode, its local model. Up to 20 transcript entries stay in browser memory and clear on reload or session end. Chat cannot confirm bookings.</p></details>
+          <ol ref={transcriptRef} className="chat-transcript" aria-label="Chat messages" aria-live="polite">{chat.map((item, index) => <li className={item.sender === 'You' ? 'chat-message chat-user' : 'chat-message chat-assistant'} key={index}><strong>{item.sender}: </strong>{item.text}</li>)}</ol>
+          {chatPending && <p className="assistant-typing" role="status"><span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>{chatPending === 'typing' ? 'Assistant is typing…' : 'Checking available appointments…'}</p>}
+          {chatReady && !draft && <div className="chat-booking-action">
+            <p><strong>{services.find((item) => item.id === serviceId)?.name}</strong> · {date} · {duration} minutes · {staff.find((item) => item.id === staffId)?.displayName ?? 'Any staff'}</p>
+            <button disabled={busy} onClick={() => { void search(); }}>View available times</button>
+            <p className="note">Choose a time, then review and confirm your booking. Nothing is reserved yet.</p>
+          </div>}
           <form onSubmit={(event) => { event.preventDefault(); void sendChat(); }}><label htmlFor="booking-message">Message</label>
             <textarea id="booking-message" maxLength={1000} value={chatText} disabled={busy || !!draft} onChange={(event) => setChatText(event.target.value)} />
-            <div className="row-actions"><button disabled={busy || !!draft || !chatText.trim()}>Send message</button>
-              <button type="button" className="secondary" disabled={busy || !!draft || !suggestion || !!suggestion.needsClarification.length} onClick={applySuggestion}>Use suggested details</button></div>
+            <div className="row-actions"><button disabled={busy || !!draft || !chatText.trim()}>Send message</button></div>
           </form>
         </section>
         <section aria-labelledby="choose-appointment"><h2 id="choose-appointment">Choose appointment details</h2>
           <form onSubmit={(event) => { event.preventDefault(); void search(); }}>
-            <fieldset disabled={busy || !!draft} onChange={() => { setAvailable(null); setError(''); }}>
+            <fieldset disabled={busy || !!draft} onChange={() => { setAvailable(null); setError(''); setChatReady(false); }}>
               <label htmlFor="booking-service">Service</label><select id="booking-service" value={serviceId} onChange={(event) => setServiceId(event.target.value)} required>
                 {services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
               </select>
@@ -240,7 +281,7 @@ export function CustomerBookingPage() {
               <div className="row-actions"><button disabled={!serviceId}>View appointments</button></div>
             </fieldset>
           </form>
-          {available && !draft && <div aria-label="Available appointments">
+          {available && !draft && <div ref={appointmentsRef} tabIndex={-1} aria-label="Available appointments">
             <p>{available.pagination.total} available starts · {available.timezone}. Availability is not a hold.</p>
             {available.items.length === 0 ? <p>No appointments match. Choose another date, duration or staff member.</p> : <ul className="appointment-options">{available.items.map((slot) => <li key={slot.slotId}>
               <button className="secondary" disabled={busy} onClick={() => { void select(slot); }}>Select {slot.staffName} {localTime(slot.startAt, slot.timezone)}</button><span>{slot.durationMinutes} minutes · ends {localTime(slot.endAt, slot.timezone)}</span>
@@ -252,14 +293,14 @@ export function CustomerBookingPage() {
         </section>
         {draft && !proposal && <section><h2>Recover selected appointment</h2><button disabled={busy} onClick={() => { void retryProposal(); }}>Retry selection</button>
           {!pending && <button className="secondary" disabled={busy} onClick={clearSelection}>Choose another appointment</button>}</section>}
-        {proposal && <section aria-labelledby="review-appointment"><h2 id="review-appointment">Review appointment</h2>
+        {proposal && <section ref={reviewRef} tabIndex={-1} aria-labelledby="review-appointment"><h2 id="review-appointment">Review appointment</h2>
           <p><strong>{proposal.serviceName}</strong> with <strong>{proposal.staffName}</strong><br />{localTime(proposal.startAt, proposal.timezone)} – {localTime(proposal.endAt, proposal.timezone)}<br />{proposal.durationMinutes} minutes · {proposal.timezone}</p>
           <p className={expired ? 'error' : 'note'}>{expired ? 'Proposal expired. Choose another appointment, unless you are retrying an already submitted confirmation.' : 'Proposal expires ' + localTime(proposal.expiresAt, proposal.timezone) + '. No slots are held yet.'}</p>
           <form onSubmit={(event) => { event.preventDefault(); void submitConfirmation(); }}>
             <label htmlFor="customer-name">Synthetic customer name</label><input id="customer-name" maxLength={120} value={draft?.confirmation?.body.customer.name ?? name} disabled={busy || pending} onChange={(event) => setName(event.target.value)} required />
             <label htmlFor="customer-email">Synthetic email (example.test)</label><input id="customer-email" type="email" maxLength={254} value={draft?.confirmation?.body.customer.email ?? email} disabled={busy || pending} onChange={(event) => setEmail(event.target.value)} required />
             <p className="note">Confirming reserves this exact appointment for the synthetic customer above. The server rechecks availability.</p>
-            <div className="row-actions"><button disabled={busy || expired && !pending}>{pending ? 'Retry same confirmation' : 'Confirm appointment'}</button>
+            <div className="row-actions"><button disabled={busy || expired && !pending}>{pending ? 'Retry same confirmation' : 'Confirm booking'}</button>
               <button type="button" className="secondary" disabled={busy || pending} onClick={clearSelection}>Choose another appointment</button></div>
           </form>
         </section>}

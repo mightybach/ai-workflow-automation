@@ -11,7 +11,7 @@ export const CustomerChatBodySchema = z.object({
   message: z.string().trim().min(1).max(1000), context: BookingPreferencesSchema,
 }).strict();
 export const CustomerChatResponseSchema = z.object({
-  provider: z.literal('mock-v1'),
+  provider: z.enum(['mock-v1', 'ollama-v1']),
   intent: z.enum(['BOOK_APPOINTMENT', 'VIEW_AVAILABILITY', 'CANCEL_REQUEST', 'UNKNOWN']),
   selection: BookingPreferencesSchema,
   needsClarification: z.array(z.enum(['service', 'staff', 'date', 'duration', 'time', 'request'])).max(6),

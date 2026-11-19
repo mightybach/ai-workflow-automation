@@ -6,10 +6,10 @@ export class ApiFailure extends Error {
 export async function apiRequest<T>(path: string, schema: {
   safeParse(value: unknown): { success: true; data: T } | { success: false };
 }, options: {
-  method?: 'GET' | 'POST'; body?: unknown; idempotencyKey?: string; signal?: AbortSignal;
+  method?: 'GET' | 'POST'; body?: unknown; idempotencyKey?: string; signal?: AbortSignal; timeoutMs?: number;
 } = {}): Promise<T> {
   let response: Response;
-  const timeout = AbortSignal.timeout(15000);
+  const timeout = AbortSignal.timeout(options.timeoutMs ?? 15000);
   try {
     response = await fetch('/api/v1' + path, {
       method: options.method ?? 'GET', credentials: 'same-origin',

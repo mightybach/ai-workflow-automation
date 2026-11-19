@@ -73,7 +73,7 @@ try {
       if (loseConfirmation) { loseConfirmation = false; const result = await route.fetch(); assert.equal(result.status(), 201); await route.abort('failed'); }
       else await route.continue();
     });
-    await page.getByRole('button', { name: 'Confirm appointment', exact: true }).click();
+    await page.getByRole('button', { name: 'Confirm booking', exact: true }).click();
     await page.getByRole('button', { name: 'Retry same confirmation', exact: true }).waitFor();
     await page.getByRole('alert').filter({ hasText: 'Could not reach the API' }).waitFor();
     assert.equal(await db.booking.count({ where: { businessId: business.id } }), 1);
@@ -96,13 +96,14 @@ try {
   }
   if (step >= 3) {
     const before = await db.bookingProposal.count({ where: { businessId: business.id } });
+    const staffBeforeClarification = await page.getByLabel('Preferred staff').inputValue();
     await page.getByLabel('Message', { exact: true }).fill('Haircut tomorrow');
     await page.getByRole('button', { name: 'Send message', exact: true }).click();
-    await page.getByLabel('Chat messages').getByText(/Please clarify: duration/).waitFor();
-    assert.equal(await page.getByRole('button', { name: 'Use suggested details' }).isDisabled(), true);
+    await page.getByLabel('Chat messages').getByText(/How long would you like/).waitFor();
+    assert.equal(await page.getByLabel('Preferred staff').inputValue(), staffBeforeClarification, 'Incomplete chat must not overwrite the form.');
     await page.getByLabel('Message', { exact: true }).fill('60 minutes with Alex');
     await page.getByRole('button', { name: 'Send message', exact: true }).click();
-    await page.getByRole('button', { name: 'Use suggested details' }).click();
+    await page.getByLabel('Chat messages').getByText(/Nothing is booked yet/).waitFor();
     assert.equal(await page.getByLabel('Appointment date (dd-mm-yyyy)').inputValue(), display(date));
     assert.equal(await page.getByLabel('Duration', { exact: true }).inputValue(), '60');
     assert.equal(await page.getByLabel('Preferred staff').inputValue(), people[0].id);
@@ -118,7 +119,7 @@ try {
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     if (process.env.FLOWPILOT_CUSTOMER_SCREENSHOT) await page.screenshot({ path: process.env.FLOWPILOT_CUSTOMER_SCREENSHOT, fullPage: true });
-    console.log('PASS Step 3: multi-turn deterministic clarification, business-local relative dates, apply-only suggestions, no chat writes/consent, transient transcript and mobile layout.');
+    console.log('PASS Step 3: multi-turn clarification, automatic complete form fill including staff, business-local dates, no chat writes/consent, transient transcript and mobile layout.');
   }
   if (step >= 4) {
     // Chat failure leaves manual input usable.
@@ -139,7 +140,7 @@ try {
     const proposal = await db.bookingProposal.findFirstOrThrow({ where: { businessId: business.id, booking: null }, orderBy: { createdAt: 'desc' } });
     const conflicting = await db.availabilitySlot.findFirstOrThrow({ where: { businessId: business.id, staffId: proposal.staffId, startAt: proposal.startAt } });
     await db.availabilitySlot.update({ where: { id: conflicting.id }, data: { state: 'BLOCKED' } });
-    await page.getByRole('button', { name: 'Confirm appointment', exact: true }).click();
+    await page.getByRole('button', { name: 'Confirm booking', exact: true }).click();
     await page.getByRole('alert').filter({ hasText: 'View availability again' }).waitFor();
     assert.equal(await db.booking.count({ where: { businessId: business.id } }), 1);
     assert.equal(await page.getByRole('button', { name: 'View appointments', exact: true }).isEnabled(), true);
@@ -153,7 +154,7 @@ try {
     await page.getByRole('button', { name: 'View appointments', exact: true }).click();
     await page.getByRole('button', { name: /^Select Alex/ }).first().click();
     await page.getByText(/Proposal expired\./).waitFor();
-    assert.equal(await page.getByRole('button', { name: 'Confirm appointment', exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole('button', { name: 'Confirm booking', exact: true }).isDisabled(), true);
     await page.getByRole('button', { name: 'Choose another appointment', exact: true }).click();
     await page.unroute('**/api/v1/customer/booking-proposals');
     // Session revocation clears UI/draft/chat, with no recovery by reference.

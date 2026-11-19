@@ -18,6 +18,14 @@ test('mock extraction resolves relative dates through business timezone and supp
   assert.deepEqual(complete.needsClarification, []);
   assert.deepEqual(complete.selection, { serviceId: service, staffId: staff, date: '2026-11-20', durationMinutes: 60 });
 });
+
+test('mock shares bounded spelling correction and explains the remaining booking steps', () => {
+  const result = extractor.extract({ ...base, message: 'Haircut tommorow for 30 minuites with Alex' });
+  assert.deepEqual(result.selection, { serviceId: service, staffId: staff, date: '2026-11-20', durationMinutes: 30 });
+  assert.deepEqual(result.needsClarification, []);
+  assert.match(result.message, /tommorow → tomorrow/);
+  assert.match(result.message, /Nothing is booked yet/);
+});
 test('mock accepts explicit dd-mm-yyyy and integer hours without inventing times', () => {
   const result = extractor.extract({ ...base, message: 'book a Haircut on 25-11-2026 for 2 hours with Alex' });
   assert.equal(result.intent, 'BOOK_APPOINTMENT');

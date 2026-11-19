@@ -12,6 +12,7 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
     "test": "pnpm --filter @flowpilot/contracts test && pnpm --filter @flowpilot/api test",
+    "ai:evaluate": "pnpm --filter @flowpilot/api... build && pnpm --filter @flowpilot/api eval:ai",
     "test:integration": "pnpm --filter @flowpilot/api^... build && pnpm --filter @flowpilot/db test:prepare && pnpm --filter @flowpilot/api test:integration",
     "db:seed": "pnpm --filter @flowpilot/db seed",
     "db:validate": "pnpm --filter @flowpilot/db validate",

@@ -237,3 +237,12 @@ test('chat and browser recovery contracts reject authority fields and forged con
   assert.equal(bookingContracts.CustomerBookingDraftSchema.safeParse({ ...draft, status: 'CONFIRMED' }).success, false);
   assert.equal(bookingContracts.CustomerBookingDraftSchema.safeParse({ ...draft, confirmation: { key: 'stable-confirm', body: { proposalId: id, customer: { name: 'Demo', email: 'demo@example.test' }, confirmed: true } } }).success, false);
 });
+
+test('chat responses identify mock/local AI but reject model authority and unknown providers', () => {
+  const response = { provider: 'ollama-v1', intent: 'UNKNOWN', selection: { serviceId: null, staffId: null, date: null, durationMinutes: null },
+    needsClarification: ['request'], message: 'Choose details in the booking form.', referenceTime: timestamp, timezone: 'Australia/Brisbane' };
+  for (const provider of ['mock-v1', 'ollama-v1']) assert.equal(bookingContracts.CustomerChatResponseSchema.safeParse({ ...response, provider }).success, true);
+  for (const patch of [{ provider: 'cloud' }, { confirmed: true }, { bookingId: id }, { slots: [] }]) {
+    assert.equal(bookingContracts.CustomerChatResponseSchema.safeParse({ ...response, ...patch }).success, false);
+  }
+});

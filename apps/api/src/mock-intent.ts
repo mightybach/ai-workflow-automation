@@ -1,20 +1,19 @@
-import { BusinessDateSchema, CustomerChatResponseSchema, type CustomerChatBody, type CustomerChatResponse } from '@flowpilot/contracts';
+import { BusinessDateSchema, CustomerChatResponseSchema, type CustomerChatResponse } from '@flowpilot/contracts';
 import { addCalendarDays, businessDate } from '@flowpilot/db';
+import type { ExtractionInput, IntentExtractor } from './intent.js';
+import { bookingClarification, bookingNextStep, isAvailabilityQuestion, normalizeBookingInput } from './booking-text.js';
+export type { ExtractionInput, IntentExtractor } from './intent.js';
 
-type CatalogItem = { id: string; name: string };
-export type ExtractionInput = CustomerChatBody & {
-  services: CatalogItem[]; staff: CatalogItem[]; timezone: string; referenceTime: Date; maximum: number;
-};
-export interface IntentExtractor { extract(input: ExtractionInput): CustomerChatResponse }
 const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Pure interpretation only: no database client, network, tools or booking effects.
 export class MockIntentExtractor implements IntentExtractor {
-  extract(input: ExtractionInput): CustomerChatResponse {
+  extract(source: ExtractionInput): CustomerChatResponse {
+    const { input, notice } = normalizeBookingInput(source);
     const selection = { ...input.context };
     const needs = new Set<'service' | 'staff' | 'date' | 'duration' | 'time' | 'request'>();
     const finish = (intent: CustomerChatResponse['intent'], message: string) => CustomerChatResponseSchema.parse({
-      provider: 'mock-v1', intent, selection, needsClarification: [...needs], message,
+      provider: 'mock-v1', intent, selection, needsClarification: [...needs], message: notice + message,
       referenceTime: input.referenceTime.toISOString(), timezone: input.timezone,
     });
     if (!input.services.some((item) => item.id === selection.serviceId)) selection.serviceId = null;
@@ -22,6 +21,12 @@ export class MockIntentExtractor implements IntentExtractor {
     if (selection.durationMinutes && selection.durationMinutes > input.maximum) { selection.durationMinutes = null; needs.add('duration'); }
     const today = businessDate(input.referenceTime, input.timezone);
     if (selection.date && selection.date < today) selection.date = null;
+    if (isAvailabilityQuestion(input.message)) {
+      if (!selection.serviceId) needs.add('service');
+      if (!selection.date) needs.add('date');
+      if (!selection.durationMinutes) needs.add('duration');
+      return finish(needs.size ? 'UNKNOWN' : 'VIEW_AVAILABILITY', needs.size ? bookingClarification(needs, input) : bookingNextStep);
+    }
     let remaining = input.message.toLowerCase();
     if (/\b(cancel|reschedule)\b/.test(remaining)) {
       needs.add('request');
@@ -63,7 +68,7 @@ export class MockIntentExtractor implements IntentExtractor {
     if (!selection.serviceId) needs.add('service');
     if (!selection.date) needs.add('date');
     if (!selection.durationMinutes) needs.add('duration');
-    if (needs.size) return finish('UNKNOWN', 'Please clarify: ' + [...needs].join(', ') + '. Use an active service, dd-mm-yyyy (or today/tomorrow), and minutes. You can always use the booking form and choose a real time there.');
-    return finish(/\bbook|appointment/i.test(input.message) ? 'BOOK_APPOINTMENT' : 'VIEW_AVAILABILITY', 'These are suggested preferences only. Apply them to the form, view actual availability, select a time and explicitly confirm after review.');
+    if (needs.size) return finish('UNKNOWN', bookingClarification(needs, input));
+    return finish(/\bbook|appointment/i.test(input.message) ? 'BOOK_APPOINTMENT' : 'VIEW_AVAILABILITY', bookingNextStep);
   }
 }
