@@ -30,8 +30,8 @@ try {
   await page.getByRole('heading', { name: 'FlowPilot Demo Salon', exact: true }).waitFor();
   await page.getByText('Synthetic salon · OWNER', { exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Staff', exact: true }).waitFor();
-  await page.getByText('Alex', { exact: true }).first().waitFor();
-  await page.getByText('Haircut', { exact: true }).waitFor();
+  await page.getByRole('region', { name: 'Staff', exact: true }).getByText('Alex', { exact: true }).waitFor();
+  await page.getByRole('region', { name: 'Services', exact: true }).getByText('Haircut', { exact: true }).waitFor();
   const dateInput = page.getByLabel('Date', { exact: true });
   let date = process.env.SEED_START_DATE || (await dateInput.inputValue()).split('-').reverse().join('-');
   const parsed = new Date(date + 'T00:00:00Z');

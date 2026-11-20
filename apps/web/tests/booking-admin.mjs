@@ -43,7 +43,7 @@ try {
   console.log('PASS: scoped booking filters/history, explicit OWNER review/keep/cancel, durable reload retry, customer visibility, STAFF read-only and mobile layout.');
 } finally {
   await browser.close();try{await db.$transaction(async(tx)=>{
-    await tx.auditEvent.deleteMany({where:{businessId:business.id}});await tx.bookingAction.deleteMany({where:{businessId:business.id}});await tx.bookingSlot.deleteMany({where:{businessId:business.id}});await tx.booking.deleteMany({where:{businessId:business.id}});await tx.bookingProposal.deleteMany({where:{businessId:business.id}});await tx.customerSession.deleteMany({where:{businessId:business.id}});
+    await tx.auditEvent.deleteMany({where:{businessId:business.id}});await tx.notificationOutbox.deleteMany({where:{businessId:business.id}}); await tx.bookingAction.deleteMany({where:{businessId:business.id}});await tx.bookingSlot.deleteMany({where:{businessId:business.id}});await tx.booking.deleteMany({where:{businessId:business.id}});await tx.bookingProposal.deleteMany({where:{businessId:business.id}});await tx.customerSession.deleteMany({where:{businessId:business.id}});
     await tx.availabilitySlot.deleteMany({where:{businessId:business.id}});await tx.staff.deleteMany({where:{businessId:business.id}});await tx.service.deleteMany({where:{businessId:business.id}});await tx.businessMembership.deleteMany({where:{businessId:business.id}});await tx.business.delete({where:{id:business.id}});await tx.user.deleteMany({where:{id:{in:users.map((row)=>row.id)}}});
   });}finally{await db.$disconnect();}
 }

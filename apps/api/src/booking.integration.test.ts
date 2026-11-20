@@ -26,7 +26,7 @@ test('Phase 2 atomic explicit booking confirmation and owned reads', async (t) =
     try {
       await db.$transaction(async (tx) => {
         await tx.auditEvent.deleteMany({ where: { businessId: { in: ids } } });
-        await tx.bookingAction.deleteMany({ where: { businessId: { in: ids } } });
+        await tx.notificationOutbox.deleteMany({ where: { businessId: { in: ids } } }); await tx.bookingAction.deleteMany({ where: { businessId: { in: ids } } });
         await tx.bookingSlot.deleteMany({ where: { businessId: { in: ids } } });
         await tx.booking.deleteMany({ where: { businessId: { in: ids } } });
         await tx.bookingProposal.deleteMany({ where: { businessId: { in: ids } } });

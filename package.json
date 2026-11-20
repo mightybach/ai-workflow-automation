@@ -24,7 +24,10 @@
     "infra:up": "docker compose up -d --wait postgres",
     "infra:automation": "docker compose --profile automation up -d --wait postgres rabbitmq",
     "infra:down": "docker compose down",
-    "infra:config": "docker compose config --quiet"
+    "infra:config": "docker compose config --quiet",
+    "publisher": "pnpm --filter @flowpilot/api... build && pnpm --filter @flowpilot/api publisher",
+    "worker": "pnpm --filter @flowpilot/api... build && pnpm --filter @flowpilot/api worker",
+    "reminders": "pnpm --filter @flowpilot/api... build && pnpm --filter @flowpilot/api reminders"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -35,4 +38,3 @@
     "typescript-eslint": "8.72.2"
   }
 }
-

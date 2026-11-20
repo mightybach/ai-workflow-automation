@@ -8,6 +8,7 @@ import { adminActionId, businessAccess, lockOwnedBusiness, requireOwner } from '
 import { bookingDto } from './booking-service.js';
 import { releaseAppointment } from './booking-release.js';
 import { ApiError } from './errors.js';
+import { enqueueBookingNotification } from './notification-outbox.js';
 function input<T extends z.ZodType>(schema: T, value: unknown): z.output<T> { const result = schema.safeParse(value); if (!result.success) throw new ApiError(400, 'VALIDATION_ERROR', 'Use the booking administration contract.'); return result.data; }
 const actionSchema = z.object({ fingerprint: z.string(), response: AdminCancellationResultSchema }).strict();
 export async function cancelBusinessBooking(db: PrismaClient, request: FastifyRequest, bookingId: string, key: string, clock: () => Date) {
@@ -32,6 +33,7 @@ export async function cancelBusinessBooking(db: PrismaClient, request: FastifyRe
     const result = AdminCancellationResultSchema.parse({ id: saved.id, reference: saved.reference, status: saved.status, cancelledAt: saved.cancelledAt!.toISOString() });
     await tx.auditEvent.create({ data: { id, businessId, entityType: 'Booking', entityId: target, actorType: 'USER', actorId: access.actor.id,
       eventType: changed ? 'BOOKING_CANCELLED_BY_OWNER' : 'BOOKING_CANCELLATION_CHECKED', traceId: request.id, metadata: { fingerprint, response: result }, createdAt: now } });
+    if (changed) await enqueueBookingNotification(tx, { eventType: 'BOOKING_CANCELLED', businessId: saved.businessId, bookingId: saved.id, previousBookingId: null, occurredAt: now.toISOString(), traceId: request.id });
     return { result, replayed: false };
   }, { isolationLevel: 'ReadCommitted', timeout: 10000 });
 }

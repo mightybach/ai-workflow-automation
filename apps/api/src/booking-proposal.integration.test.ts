@@ -31,7 +31,7 @@ test('Phase 2 immutable idempotent booking proposals', async (t) => {
     await app.close(); await secondApp.close();
     try {
       await db.auditEvent.deleteMany({ where: { businessId: { in: ids } } });
-      await db.bookingAction.deleteMany({ where: { businessId: { in: ids } } });
+      await db.notificationOutbox.deleteMany({ where: { businessId: { in: ids } } }); await db.bookingAction.deleteMany({ where: { businessId: { in: ids } } });
       await db.bookingProposal.deleteMany({ where: { businessId: { in: ids } } });
       await db.customerSession.deleteMany({ where: { businessId: { in: ids } } });
       await db.availabilitySlot.deleteMany({ where: { businessId: { in: ids } } });

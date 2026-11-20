@@ -6,6 +6,7 @@ import { BookingResponseSchema } from '@flowpilot/contracts';
 import { customerScope } from './customer-auth.js';
 import { bookingDto } from './booking-service.js';
 import { ApiError } from './errors.js';
+import { enqueueBookingNotification } from './notification-outbox.js';
 
 // Called only by the dedicated explicit customer cancellation interaction.
 export async function cancelBooking(db: PrismaClient, request: FastifyRequest, bookingId: string, key: string, clock: () => Date) {
@@ -42,6 +43,7 @@ export async function cancelBooking(db: PrismaClient, request: FastifyRequest, b
       await tx.auditEvent.create({ data: { businessId: session.businessId, entityType: 'Booking', entityId: id,
         actorType: 'SYSTEM', actorId: null, eventType: 'BOOKING_CANCELLED', traceId: request.id,
         metadata: { durationMinutes: saved.proposal.durationMinutes }, createdAt: now } });
+      await enqueueBookingNotification(tx, { eventType: 'BOOKING_CANCELLED', businessId: saved.businessId, bookingId: saved.id, previousBookingId: null, occurredAt: now.toISOString(), traceId: request.id });
     }
     const booking = bookingDto(saved);
     await tx.bookingAction.create({ data: { businessId: session.businessId, sessionId: session.id, operation: 'CANCEL',

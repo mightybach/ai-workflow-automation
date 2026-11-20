@@ -156,6 +156,7 @@ enum SlotState {
 }
 
 model Business {
+  mockRemindersEnabled      Boolean @default(false)
   id                        String               @id @default(uuid()) @db.Uuid
   slug                      String               @unique
   name                      String
@@ -174,6 +175,7 @@ model Business {
   bookings                  Booking[]
   bookingActions            BookingAction[]
   closures                  ScheduleClosure[]
+  notificationOutbox        NotificationOutbox[]
 }
 
 // One business per dashboard user in Phase 1. Legacy User.role is unchanged.
@@ -335,6 +337,8 @@ model Booking {
   cancelledAt   DateTime?       @db.Timestamptz(3)
   slots         BookingSlot[]
   actions       BookingAction[]
+  notificationEvents NotificationOutbox[] @relation("OutboxBooking")
+  replacementEvents  NotificationOutbox[] @relation("OutboxPreviousBooking")
 
   @@unique([businessId, id])
   @@unique([businessId, sessionId, id])
@@ -377,4 +381,63 @@ model BookingAction {
   @@unique([businessId, sessionId, operation, idempotencyKey])
   @@index([proposalId])
   @@index([bookingId])
+}
+
+enum NotificationEventType {
+  BOOKING_CONFIRMED
+  BOOKING_CANCELLED
+  BOOKING_RESCHEDULED
+  BOOKING_REMINDER
+}
+
+enum OutboxStatus {
+  PENDING
+  PUBLISHED
+  DEAD
+}
+
+// Immutable minimal event identity plus publisher retry/lease state.
+model NotificationOutbox {
+  receipt           MockNotificationReceipt?
+  id                String                @id @default(uuid()) @db.Uuid
+  schemaVersion     Int                   @default(1)
+  eventType         NotificationEventType
+  deliveryMode      String                @default("MOCK") @db.VarChar(16)
+  businessId        String                @db.Uuid
+  business          Business              @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  bookingId         String                @db.Uuid
+  booking           Booking               @relation("OutboxBooking", fields: [businessId, bookingId], references: [businessId, id], onDelete: Restrict)
+  previousBookingId String?               @db.Uuid
+  previousBooking   Booking?              @relation("OutboxPreviousBooking", fields: [businessId, previousBookingId], references: [businessId, id], onDelete: Restrict)
+  occurredAt        DateTime              @db.Timestamptz(3)
+  traceId           String                @db.VarChar(128)
+  createdAt         DateTime              @default(now()) @db.Timestamptz(3)
+  status            OutboxStatus          @default(PENDING)
+  availableAt       DateTime              @db.Timestamptz(3)
+  attempts          Int                   @default(0)
+  leaseToken        String?               @db.Uuid
+  leaseExpiresAt    DateTime?             @db.Timestamptz(3)
+  publishedAt       DateTime?             @db.Timestamptz(3)
+  lastErrorCode     String?               @db.VarChar(64)
+
+  @@unique([businessId, bookingId, eventType])
+  @@index([status, availableAt, id])
+  @@index([businessId, occurredAt, id])
+  @@index([businessId, previousBookingId])
+}
+
+// The mock effect and deduplication receipt are the same atomic database row.
+model MockNotificationReceipt {
+  eventId     String @id @db.Uuid
+  event       NotificationOutbox @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  outcome     String @db.VarChar(24)
+  reason      String @db.VarChar(32)
+  processedAt DateTime @default(now()) @db.Timestamptz(3)
+}
+
+// Redacted quarantine: no body, recipient, raw error or broker credentials.
+model MockNotificationRejection {
+  fingerprint String @id @db.VarChar(64)
+  reason      String @db.VarChar(32)
+  receivedAt  DateTime @default(now()) @db.Timestamptz(3)
 }

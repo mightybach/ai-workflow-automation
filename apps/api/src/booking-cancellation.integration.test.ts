@@ -25,7 +25,7 @@ test('Phase 5 Step 3 explicit owned cancellation and complete historical release
   t.after(async () => {
     await app.close(); await other.close();
     try { await db.$transaction(async (tx) => {
-      await tx.auditEvent.deleteMany({ where: { businessId: { in: ids } } }); await tx.bookingAction.deleteMany({ where: { businessId: { in: ids } } });
+      await tx.auditEvent.deleteMany({ where: { businessId: { in: ids } } }); await tx.notificationOutbox.deleteMany({ where: { businessId: { in: ids } } }); await tx.bookingAction.deleteMany({ where: { businessId: { in: ids } } });
       await tx.bookingSlot.deleteMany({ where: { businessId: { in: ids } } }); await tx.booking.deleteMany({ where: { businessId: { in: ids } } });
       await tx.bookingProposal.deleteMany({ where: { businessId: { in: ids } } }); await tx.customerSession.deleteMany({ where: { businessId: { in: ids } } });
       await tx.scheduleClosure.deleteMany({ where: { businessId: { in: ids } } }); await tx.availabilitySlot.deleteMany({ where: { businessId: { in: ids } } });

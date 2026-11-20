@@ -4,6 +4,7 @@ import { Prisma, type PrismaClient } from '@flowpilot/db';
 import { BookingResponseSchema, type ConfirmBookingBody } from '@flowpilot/contracts';
 import { customerScope } from './customer-auth.js';
 import { ApiError } from './errors.js';
+import { enqueueBookingNotification } from './notification-outbox.js';
 
 type SavedBooking = Prisma.BookingGetPayload<{ include: { proposal: true } }>;
 export function bookingDto(booking: SavedBooking) {
@@ -97,6 +98,7 @@ export async function confirmBooking(
       actorType: 'SYSTEM', actorId: null, eventType: 'BOOKING_CONFIRMED', traceId: request.id,
       metadata: { durationMinutes: proposal.durationMinutes }, createdAt: now,
     } });
+    await enqueueBookingNotification(tx, { eventType: 'BOOKING_CONFIRMED', businessId: saved.businessId, bookingId: saved.id, previousBookingId: null, occurredAt: now.toISOString(), traceId: request.id });
     return { booking, replayed: false };
   }, { isolationLevel: 'ReadCommitted', timeout: 10000 });
 }

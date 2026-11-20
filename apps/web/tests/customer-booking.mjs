@@ -170,7 +170,7 @@ try {
   try {
     await db.$transaction(async (tx) => {
       await tx.auditEvent.deleteMany({ where: { businessId: business.id } });
-      await tx.bookingAction.deleteMany({ where: { businessId: business.id } });
+      await tx.notificationOutbox.deleteMany({ where: { businessId: business.id } }); await tx.bookingAction.deleteMany({ where: { businessId: business.id } });
       await tx.bookingSlot.deleteMany({ where: { businessId: business.id } });
       await tx.booking.deleteMany({ where: { businessId: business.id } });
       await tx.bookingProposal.deleteMany({ where: { businessId: business.id } });

@@ -12,7 +12,9 @@ It is also a portfolio project for full-stack development, concurrency-safe rese
 
 **Phases 1–4 are implemented and locally validated, including optional Ollama intent extraction and manual fallback.**
 
-**Phases 1–5 are implemented locally:** owners manage duration limits, dated working time, closures and cancellations; customers explicitly book, cancel and reschedule future appointments. OWNER/STAFF dashboards include scoped booking and redacted audit views. Staff have read-only access; only owners can change business schedules or cancel on the business's behalf. Recurring weekly templates and automated notifications are separate future work.
+**Phases 1–5 are implemented locally:** owners manage duration limits, dated working time, closures and cancellations; customers explicitly book, cancel and reschedule future appointments. OWNER/STAFF dashboards include scoped booking and redacted audit views. Staff have read-only access; only owners can change business schedules or cancel on the business's behalf. Recurring weekly templates and real notification delivery remain future work.
+
+**Phase 6 is implemented locally:** transactional events, leased RabbitMQ publication, deduplicated mock receipts, recovery checks and opt-in mock reminders. All effects remain synthetic; no real email/SMS is sent.
 
 - Owner/staff dashboard with business-scoped staff, services and slot inventory, plus OWNER-only booking duration settings.
 - Anonymous customer sessions, active service/staff lists and duration-aware availability.
@@ -23,7 +25,17 @@ It is also a portfolio project for full-stack development, concurrency-safe rese
 - UTC appointment instants, IANA business timezones and dd-mm-yyyy user-facing dates.
 - Retained legacy request demo with its original data and permissions.
 
-The web app includes the customer booking page at **http://127.0.0.1:5173/book**, the business dashboard and legacy requests. Choose the default scripted mock or optional local AI assistant; neither can book, cancel, reschedule or confirm. Customers review and explicitly confirm changes through dedicated controls. Owners manage duration limits, dated inventory, closures and business cancellations. Notifications remain Phase 6 work.
+The web app includes the customer booking page at **http://127.0.0.1:5173/book**, the business dashboard and legacy requests. Choose the default scripted mock or optional local AI assistant; neither can book, cancel, reschedule or confirm. Customers review and explicitly confirm changes through dedicated controls. Owners manage duration limits, dated inventory, closures and business cancellations. Opt-in mock notifications are available through the separate publisher and worker.
+
+## Mock notifications
+
+Phase 6 now includes an opt-in outbox publisher and idempotent mock-notification worker. The worker saves a database receipt; it sends no email or SMS. Booking, cancellation and rescheduling still require their existing explicit interactions.
+
+To review notifications locally, run `pnpm infra:automation` and `pnpm build`, then set `OUTBOX_PUBLISHER_ENABLED=true` and `NOTIFICATION_WORKER_ENABLED=true` in your local `.env`. Run `pnpm --filter @flowpilot/api publisher` and `pnpm --filter @flowpilot/api worker` in separate terminals. Add `--once` to publish one bounded batch or process at most one queued message. Stop continuous processes with Ctrl+C. These processes are separate from `pnpm dev` and disabled by default. Apply additive migrations with `pnpm db:deploy` before running them.
+
+`NotificationOutbox.status = PUBLISHED` means broker acceptance. `MockNotificationReceipt.outcome = MOCK_DELIVERED` means a simulated notification was recorded; `SUPPRESSED` means the booking was stale or its business inactive. No real delivery is implied. Invalid messages are acknowledged only after saving a redacted rejection fingerprint. Repeated processing failures are bounded using quorum-broker delivery counts; database outages keep messages unacknowledged. Inspect terminal events/rejections instead of editing history.
+
+Mock reminders are a separate opt-in policy: set `MOCK_REMINDERS_ENABLED=true` in `.env`, then explicitly run `pnpm --filter @flowpilot/api reminders --enable-demo`. This persists an audited policy for the fictional demo salon. Run `pnpm --filter @flowpilot/api reminders --once` before publisher/worker to enqueue due reminders, or omit `--once` for a 30-second scan loop. Each confirmed booking gets at most one reminder inside the 24 hours before its future start. Cancelled/rescheduled/expired/opted-out reminders are suppressed on consumption. Use `reminders --disable-demo` to withdraw the policy. No recipient data is copied into the event; this demo opt-in does not authorize real delivery.
 
 ## Run locally
 
@@ -116,6 +128,21 @@ Browsing/review never releases the original. Confirmation replaces it in one tra
 In **Bookings and history**, OWNER/STAFF users can filter their business's appointments by date, staff and status. Clear the booking date to inspect all dates; use pagination for more results. **View history for …** filters the redacted audit view to that booking; **View previous appointment history** follows a replacement's predecessor. Audit date filters refer to when events occurred, rather than the appointment date. Raw audit metadata, credentials and customer messages are not returned in this view.
 
 Owners can **Review cancellation for …**, verify the exact reference/interval, then **Confirm business cancellation**. Staff have no cancellation controls. The same before-start policy and atomic release rules apply, including when the customer session has expired. Uncertain owner writes retain an actor/business-scoped retry in tab storage; **Retry same business cancellation** resolves it after reload. No action cancels a replacement by following an old reference automatically. History is retained; there is no booking deletion.
+
+### Inspect pending notification events
+
+The `NotificationOutbox` table is a saved queue for future mock notifications. A new successful booking change and its event commit together; if event persistence fails, the booking transaction rolls back. Reviews/proposals and idempotent retries add no duplicate events. Rescheduling produces one replacement event, preserving the original booking history. Events contain IDs, version, time and trace information, without copied customer names/emails or chat text.
+
+In pgAdmin, open the application database `flowpilot` and run:
+
+```sql
+SELECT "eventType", "bookingId", "previousBookingId", status,
+       attempts, "deliveryMode", "occurredAt"
+FROM "NotificationOutbox"
+ORDER BY "occurredAt" DESC, id;
+```
+
+Make a new synthetic booking/change to see rows. Existing historical bookings are not backfilled. Step 1 produces `PENDING`, `MOCK`, zero-attempt rows; `PUBLISHED` will refer to future broker publication, not proof of customer delivery. There is no outbox edit/retry endpoint or live delivery authorization. Keep PostgreSQL running; RabbitMQ is not required for this step.
 
 ### Optional PowerShell API check
 
@@ -210,4 +237,4 @@ Run `pnpm ai:evaluate` for the opt-in real-model synthetic evaluation. With the 
 
 This is a loopback-only development/test demo, not a public production booking service. Customer identity is session-based with no account recovery. Rate limits are local/in-memory; no production load or uptime claims are made. Booking reads expose CONFIRMED/CANCELLED status and replacement ancestry. Arbitrary durations/alignment, multi-location, service-specific staff eligibility, delegated STAFF writes, recurring weekly schedules, catalog editors, retention/recovery workflows and integrations need later scoped work. The customer UI restores its current booking; it has no booking-history list or reference-based lookup. Services/employees remain seeded demo setup.
 
-**Next: Phase 6 transactional outbox, worker and mock notifications.** Phase 5's local implementation is complete for dated inventory, scoped booking administration and explicit customer changes; manual owner acceptance remains a separate review. The backend stays a modular monolith until an actual need justifies extraction. The mock has a small English grammar; the AI path also deliberately limits supported preference forms. Chat has a 100-item catalog cap (manual lists cap at 1000), plus a stricter AI prompt-size budget and no persisted transcript recovery. No delivery integration or public production deployment is included.
+**Next: Phase 7 SME workflows, on separate instruction.** Phase 6 local automation includes capture, publication, mock consumption, recovery checks and fixed-policy mock reminders. Phase 5's local implementation is complete for dated inventory, scoped booking administration and explicit customer changes; manual owner acceptance remains a separate review. The backend stays a modular monolith until an actual need justifies extraction. The mock has a small English grammar; the AI path also deliberately limits supported preference forms. Chat has a 100-item catalog cap (manual lists cap at 1000), plus a stricter AI prompt-size budget and no persisted transcript recovery. No delivery integration or public production deployment is included.

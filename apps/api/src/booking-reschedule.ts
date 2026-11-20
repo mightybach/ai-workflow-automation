@@ -6,6 +6,7 @@ import { customerScope } from './customer-auth.js';
 import { bookingDto } from './booking-service.js';
 import { releaseAppointment } from './booking-release.js';
 import { ApiError } from './errors.js';
+import { enqueueBookingNotification } from './notification-outbox.js';
 
 export async function rescheduleBooking(db: PrismaClient, request: FastifyRequest, originalId: string, proposalId: string, key: string, clock: () => Date) {
   const id = originalId.toLowerCase(); const selectionId = proposalId.toLowerCase();
@@ -56,6 +57,7 @@ export async function rescheduleBooking(db: PrismaClient, request: FastifyReques
     await tx.business.update({ where: { id: session.businessId }, data: { updatedAt: new Date(Math.max(+now, +session.business.updatedAt + 1)) } });
     await tx.auditEvent.create({ data: { businessId: session.businessId, entityType: 'Booking', entityId: saved.id, actorType: 'SYSTEM', actorId: null, eventType: 'BOOKING_RESCHEDULED', traceId: request.id, metadata: { previousBookingId: id, durationMinutes: selection.durationMinutes }, createdAt: now } });
     await tx.auditEvent.create({ data: { businessId: session.businessId, entityType: 'Booking', entityId: id, actorType: 'SYSTEM', actorId: null, eventType: 'BOOKING_REPLACED', traceId: request.id, metadata: { replacementBookingId: saved.id }, createdAt: now } });
+    await enqueueBookingNotification(tx, { eventType: 'BOOKING_RESCHEDULED', businessId: saved.businessId, bookingId: saved.id, previousBookingId: id, occurredAt: now.toISOString(), traceId: request.id });
     return { booking, replayed: false };
   }, { isolationLevel: 'ReadCommitted', timeout: 10000 });
 }

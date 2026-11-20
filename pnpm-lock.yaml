@@ -41,6 +41,9 @@ importers:
       '@flowpilot/db':
         specifier: workspace:*
         version: link:../../packages/db
+      amqplib:
+        specifier: 2.4.0
+        version: 2.4.0
       fastify:
         specifier: 5.12.8
         version: 5.12.8
@@ -836,6 +839,10 @@ packages:
 
   ajv@8.20.0:
     resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}
+
+  amqplib@2.4.0:
+    resolution: {integrity: sha512-HNxvtv3etFqFNTJZlXCQLGljtxghyY7Wz9elG7qHMfj4O2Fdpd+XrQuJ+4NQ6M7+9NjGHNk5XncNsnb1nqIPYw==}
+    engines: {node: '>=18'}
 
   ansi-regex@5.0.1:
     resolution: {integrity: sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==}
@@ -2528,6 +2535,8 @@ snapshots:
       fast-uri: 3.1.9
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
+
+  amqplib@2.4.0: {}
 
   ansi-regex@5.0.1: {}
 

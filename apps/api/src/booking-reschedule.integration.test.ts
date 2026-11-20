@@ -13,7 +13,7 @@ test('Phase 5 Step 4 atomic scoped overlapping rescheduling', async (t) => {
   const businesses = await Promise.all(['a', 'b'].map((part) => db.business.create({ data: { slug: `move-${tag}-${part}`, name: 'Synthetic' } }))); const business = businesses[0]!; const ids = businesses.map((row) => row.id);
   const staff = await db.staff.create({ data: { businessId: business.id, slug: 'alex', displayName: 'Alex' } }); const service = await db.service.create({ data: { businessId: business.id, slug: 'haircut', name: 'Haircut' } });
   t.after(async () => { await app.close(); await other.close(); try { await db.$transaction(async (tx) => {
-    await tx.auditEvent.deleteMany({ where: { businessId: { in: ids } } }); await tx.bookingAction.deleteMany({ where: { businessId: { in: ids } } }); await tx.bookingSlot.deleteMany({ where: { businessId: { in: ids } } });
+    await tx.auditEvent.deleteMany({ where: { businessId: { in: ids } } }); await tx.notificationOutbox.deleteMany({ where: { businessId: { in: ids } } }); await tx.bookingAction.deleteMany({ where: { businessId: { in: ids } } }); await tx.bookingSlot.deleteMany({ where: { businessId: { in: ids } } });
     await tx.booking.deleteMany({ where: { businessId: { in: ids } } }); await tx.bookingProposal.deleteMany({ where: { businessId: { in: ids } } }); await tx.customerSession.deleteMany({ where: { businessId: { in: ids } } });
     await tx.availabilitySlot.deleteMany({ where: { businessId: { in: ids } } }); await tx.staff.deleteMany({ where: { businessId: { in: ids } } }); await tx.service.deleteMany({ where: { businessId: { in: ids } } }); await tx.business.deleteMany({ where: { id: { in: ids } } });
   }); } finally { await db.$disconnect(); } });

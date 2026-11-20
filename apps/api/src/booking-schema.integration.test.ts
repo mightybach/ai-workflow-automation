@@ -20,7 +20,7 @@ test('Phase 2 booking persistence constraints', async (t) => {
   t.after(async () => {
     try {
       await db.$transaction(async (tx) => {
-        await tx.bookingAction.deleteMany({ where: { businessId: { in: businessIds } } });
+        await tx.notificationOutbox.deleteMany({ where: { businessId: { in: businessIds } } }); await tx.bookingAction.deleteMany({ where: { businessId: { in: businessIds } } });
         await tx.bookingSlot.deleteMany({ where: { businessId: { in: businessIds } } });
         await tx.booking.deleteMany({ where: { businessId: { in: businessIds } } });
         await tx.bookingProposal.deleteMany({ where: { businessId: { in: businessIds } } });

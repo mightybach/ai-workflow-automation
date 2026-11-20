@@ -310,3 +310,14 @@ test('rescheduling binds selection/recovery and rejects authority; admin reads r
   assert.equal(bookingContracts.CustomerBookingDraftSchema.safeParse({ ...draft, rescheduling: { ...draft.rescheduling, originalBookingId: runId } }).success, false);
   assert.equal(bookingContracts.CustomerBookingDraftSchema.safeParse({ ...draft, cancellation: { key: 'cancel', bookingId: id } }).success, false);
 });
+
+test('internal notification envelopes are minimal, versioned, mock-only and bind replacement identity', () => {
+  const event = { eventId: id, schemaVersion: 1, eventType: 'BOOKING_CONFIRMED', deliveryMode: 'MOCK', businessId: id, bookingId: runId, previousBookingId: null, occurredAt: timestamp, traceId: 'synthetic-trace' };
+  const schema = bookingContracts.BookingNotificationEventSchema;
+  assert.equal(schema.safeParse(event).success, true);
+  for (const patch of [{ schemaVersion: 2 }, { deliveryMode: 'EMAIL' }, { customerEmail: 'demo@example.test' }, { message: 'raw text' }, { confirmed: true }, { eventType: 'BOOKING_RESCHEDULED' }, { previousBookingId: id }, { traceId: ' raw text ' }]) assert.equal(schema.safeParse({ ...event, ...patch }).success, false);
+  assert.equal(schema.safeParse({ ...event, eventType: 'BOOKING_RESCHEDULED', previousBookingId: id }).success, true);
+  assert.equal(schema.safeParse({ ...event, eventType: 'BOOKING_RESCHEDULED', previousBookingId: runId }).success, false);
+  assert.equal(schema.safeParse({ ...event, eventType: 'BOOKING_REMINDER' }).success, true);
+  assert.equal(schema.safeParse({ ...event, eventType: 'BOOKING_REMINDER', previousBookingId: id }).success, false);
+});
