@@ -9,6 +9,7 @@ import { BookingSettings } from './BookingSettings';
 const ScheduleEditor = lazy(() => import('./ScheduleEditor').then((module) => ({ default: module.ScheduleEditor })));
 const SchedulePolicyEditor = lazy(() => import('./SchedulePolicyEditor').then((module) => ({ default: module.SchedulePolicyEditor })));
 const BookingAdministration = lazy(() => import('./BookingAdministration').then((module) => ({ default: module.BookingAdministration })));
+const BusinessWorkflows = lazy(() => import('./BusinessWorkflows').then((module) => ({ default: module.BusinessWorkflows })));
 
 const displayDate = (iso: string) => iso.split('-').reverse().join('-');
 const apiDate = (display: string) => /^\d{2}-\d{2}-\d{4}$/.test(display) ? displayDate(display) : '';
@@ -96,6 +97,7 @@ export function BusinessDashboard({ actorId }: { actorId: string }) {
         <p className="note">Inspect staff, services and slot inventory. Business owners can edit booking settings and block or reopen future times.</p>
       </section>
       <BookingSettings role={setup.membership.role} refresh={refresh} />
+      <Suspense fallback={<p role="status">Loading workflows…</p>}><BusinessWorkflows key={setup.business.id + actorId} actorId={actorId} businessId={setup.business.id} role={setup.membership.role} today={setup.today} /></Suspense>
       {staff && <Suspense fallback={<p role="status">Loading booking administration…</p>}><BookingAdministration businessId={setup.business.id} actorId={actorId} role={setup.membership.role} today={setup.today} timezone={setup.business.timezone} staff={staff.items} onSaved={() => setInventoryRefresh((n) => n + 1)} /></Suspense>}
       {listError && <p role="alert" className="error">{listError}</p>}
       {listsLoading ? <p role="status">Loading staff and services…</p> : <div className="setup-grid">

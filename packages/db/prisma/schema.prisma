@@ -156,20 +156,24 @@ enum SlotState {
 }
 
 model Business {
-  mockRemindersEnabled      Boolean @default(false)
-  id                        String               @id @default(uuid()) @db.Uuid
-  slug                      String               @unique
+  workflowDefinitions       BusinessWorkflowDefinition[]
+  workflowRuns              BusinessWorkflowRun[]
+  workflowTasks             BusinessTask[]
+  workflowActions           BusinessWorkflowAction[]
+  mockRemindersEnabled      Boolean                      @default(false)
+  id                        String                       @id @default(uuid()) @db.Uuid
+  slug                      String                       @unique
   name                      String
-  timezone                  String               @default("Australia/Brisbane")
-  active                    Boolean              @default(true)
-  createdAt                 DateTime             @default(now()) @db.Timestamptz(3)
-  updatedAt                 DateTime             @updatedAt @db.Timestamptz(3)
+  timezone                  String                       @default("Australia/Brisbane")
+  active                    Boolean                      @default(true)
+  createdAt                 DateTime                     @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime                     @updatedAt @db.Timestamptz(3)
   memberships               BusinessMembership[]
   staff                     Staff[]
   services                  Service[]
   slots                     AvailabilitySlot[]
   auditEvents               AuditEvent[]
-  maxBookingDurationMinutes Int                  @default(120)
+  maxBookingDurationMinutes Int                          @default(120)
   customerSessions          CustomerSession[]
   bookingProposals          BookingProposal[]
   bookings                  Booking[]
@@ -180,15 +184,18 @@ model Business {
 
 // One business per dashboard user in Phase 1. Legacy User.role is unchanged.
 model BusinessMembership {
-  id         String       @id @default(uuid()) @db.Uuid
-  businessId String       @db.Uuid
-  business   Business     @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  userId     String       @unique @db.Uuid
-  user       User         @relation(fields: [userId], references: [id], onDelete: Restrict)
-  role       BusinessRole
-  active     Boolean      @default(true)
-  createdAt  DateTime     @default(now()) @db.Timestamptz(3)
+  completedWorkflowTasks BusinessTask[]
+  workflowActions        BusinessWorkflowAction[]
+  id                     String                   @id @default(uuid()) @db.Uuid
+  businessId             String                   @db.Uuid
+  business               Business                 @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  userId                 String                   @unique @db.Uuid
+  user                   User                     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  role                   BusinessRole
+  active                 Boolean                  @default(true)
+  createdAt              DateTime                 @default(now()) @db.Timestamptz(3)
 
+  @@unique([businessId, id])
   @@index([businessId])
 }
 
@@ -321,24 +328,26 @@ enum BookingOperation {
 }
 
 model Booking {
-  id            String          @id @default(uuid()) @db.Uuid
-  businessId    String          @db.Uuid
-  business      Business        @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  sessionId     String          @db.Uuid
-  session       CustomerSession @relation(fields: [businessId, sessionId], references: [businessId, id], onDelete: Restrict)
-  proposalId    String          @unique @db.Uuid
-  proposal      BookingProposal @relation("ConsumedProposal", fields: [businessId, sessionId, proposalId], references: [businessId, sessionId, id], onDelete: Restrict)
-  rescheduleProposals BookingProposal[] @relation("RescheduleSource")
-  reference     String          @unique @db.VarChar(64)
-  status        BookingStatus   @default(CONFIRMED)
-  customerName  String          @db.VarChar(120)
-  customerEmail String          @db.VarChar(254)
-  createdAt     DateTime        @default(now()) @db.Timestamptz(3)
-  cancelledAt   DateTime?       @db.Timestamptz(3)
-  slots         BookingSlot[]
-  actions       BookingAction[]
-  notificationEvents NotificationOutbox[] @relation("OutboxBooking")
-  replacementEvents  NotificationOutbox[] @relation("OutboxPreviousBooking")
+  workflowRuns        BusinessWorkflowRun[]
+  workflowTasks       BusinessTask[]
+  id                  String                @id @default(uuid()) @db.Uuid
+  businessId          String                @db.Uuid
+  business            Business              @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  sessionId           String                @db.Uuid
+  session             CustomerSession       @relation(fields: [businessId, sessionId], references: [businessId, id], onDelete: Restrict)
+  proposalId          String                @unique @db.Uuid
+  proposal            BookingProposal       @relation("ConsumedProposal", fields: [businessId, sessionId, proposalId], references: [businessId, sessionId, id], onDelete: Restrict)
+  rescheduleProposals BookingProposal[]     @relation("RescheduleSource")
+  reference           String                @unique @db.VarChar(64)
+  status              BookingStatus         @default(CONFIRMED)
+  customerName        String                @db.VarChar(120)
+  customerEmail       String                @db.VarChar(254)
+  createdAt           DateTime              @default(now()) @db.Timestamptz(3)
+  cancelledAt         DateTime?             @db.Timestamptz(3)
+  slots               BookingSlot[]
+  actions             BookingAction[]
+  notificationEvents  NotificationOutbox[]  @relation("OutboxBooking")
+  replacementEvents   NotificationOutbox[]  @relation("OutboxPreviousBooking")
 
   @@unique([businessId, id])
   @@unique([businessId, sessionId, id])
@@ -398,46 +407,175 @@ enum OutboxStatus {
 
 // Immutable minimal event identity plus publisher retry/lease state.
 model NotificationOutbox {
+  workflowRuns      BusinessWorkflowRun[]
   receipt           MockNotificationReceipt?
-  id                String                @id @default(uuid()) @db.Uuid
-  schemaVersion     Int                   @default(1)
+  id                String                   @id @default(uuid()) @db.Uuid
+  schemaVersion     Int                      @default(1)
   eventType         NotificationEventType
-  deliveryMode      String                @default("MOCK") @db.VarChar(16)
-  businessId        String                @db.Uuid
-  business          Business              @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  bookingId         String                @db.Uuid
-  booking           Booking               @relation("OutboxBooking", fields: [businessId, bookingId], references: [businessId, id], onDelete: Restrict)
-  previousBookingId String?               @db.Uuid
-  previousBooking   Booking?              @relation("OutboxPreviousBooking", fields: [businessId, previousBookingId], references: [businessId, id], onDelete: Restrict)
-  occurredAt        DateTime              @db.Timestamptz(3)
-  traceId           String                @db.VarChar(128)
-  createdAt         DateTime              @default(now()) @db.Timestamptz(3)
-  status            OutboxStatus          @default(PENDING)
-  availableAt       DateTime              @db.Timestamptz(3)
-  attempts          Int                   @default(0)
-  leaseToken        String?               @db.Uuid
-  leaseExpiresAt    DateTime?             @db.Timestamptz(3)
-  publishedAt       DateTime?             @db.Timestamptz(3)
-  lastErrorCode     String?               @db.VarChar(64)
+  deliveryMode      String                   @default("MOCK") @db.VarChar(16)
+  businessId        String                   @db.Uuid
+  business          Business                 @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  bookingId         String                   @db.Uuid
+  booking           Booking                  @relation("OutboxBooking", fields: [businessId, bookingId], references: [businessId, id], onDelete: Restrict)
+  previousBookingId String?                  @db.Uuid
+  previousBooking   Booking?                 @relation("OutboxPreviousBooking", fields: [businessId, previousBookingId], references: [businessId, id], onDelete: Restrict)
+  occurredAt        DateTime                 @db.Timestamptz(3)
+  traceId           String                   @db.VarChar(128)
+  createdAt         DateTime                 @default(now()) @db.Timestamptz(3)
+  status            OutboxStatus             @default(PENDING)
+  availableAt       DateTime                 @db.Timestamptz(3)
+  attempts          Int                      @default(0)
+  leaseToken        String?                  @db.Uuid
+  leaseExpiresAt    DateTime?                @db.Timestamptz(3)
+  publishedAt       DateTime?                @db.Timestamptz(3)
+  lastErrorCode     String?                  @db.VarChar(64)
 
   @@unique([businessId, bookingId, eventType])
+  @@unique([businessId, bookingId, id])
   @@index([status, availableAt, id])
   @@index([businessId, occurredAt, id])
   @@index([businessId, previousBookingId])
 }
 
+enum BusinessWorkflowTemplate {
+  PREPARE_APPOINTMENT
+  FOLLOW_UP_ENQUIRY
+}
+
+enum BusinessWorkflowRunStatus {
+  PENDING
+  SUCCEEDED
+  SUPPRESSED
+  DEAD
+}
+
+enum BusinessTaskStatus {
+  OPEN
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum BusinessWorkflowOperation {
+  SET_POLICY
+  COMPLETE_TASK
+  RECORD_ENQUIRY
+}
+
+model BusinessWorkflowDefinition {
+  id           String                   @id @default(uuid()) @db.Uuid
+  businessId   String                   @db.Uuid
+  business     Business                 @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  template     BusinessWorkflowTemplate
+  enabled      Boolean                  @default(false)
+  revision     Int                      @default(1)
+  activationId String?                  @db.Uuid
+  enabledAt    DateTime?                @db.Timestamptz(3)
+  createdAt    DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime                 @updatedAt @db.Timestamptz(3)
+  runs         BusinessWorkflowRun[]
+  tasks        BusinessTask[]
+  actions      BusinessWorkflowAction[]
+
+  @@unique([businessId, template])
+  @@unique([businessId, id])
+}
+
+model BusinessWorkflowRun {
+  enquiryActions BusinessWorkflowAction[]
+  id             String                     @id @default(uuid()) @db.Uuid
+  businessId     String                     @db.Uuid
+  business       Business                   @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  definitionId   String                     @db.Uuid
+  definition     BusinessWorkflowDefinition @relation(fields: [businessId, definitionId], references: [businessId, id], onDelete: Restrict)
+  bookingId      String                     @db.Uuid
+  booking        Booking                    @relation(fields: [businessId, bookingId], references: [businessId, id], onDelete: Restrict)
+  triggerEventId String                     @db.Uuid
+  triggerEvent   NotificationOutbox         @relation(fields: [businessId, bookingId, triggerEventId], references: [businessId, bookingId, id], onDelete: Restrict)
+  activationId   String                     @db.Uuid
+  policyRevision Int
+  status         BusinessWorkflowRunStatus  @default(PENDING)
+  attempts       Int                        @default(0)
+  availableAt    DateTime                   @db.Timestamptz(3)
+  leaseToken     String?                    @db.Uuid
+  leaseExpiresAt DateTime?                  @db.Timestamptz(3)
+  resultCode     String?                    @db.VarChar(64)
+  lastErrorCode  String?                    @db.VarChar(64)
+  createdAt      DateTime                   @default(now()) @db.Timestamptz(3)
+  finishedAt     DateTime?                  @db.Timestamptz(3)
+  task           BusinessTask?
+
+  @@unique([businessId, definitionId, bookingId])
+  @@unique([businessId, definitionId, triggerEventId])
+  @@unique([businessId, definitionId, bookingId, id])
+  @@unique([businessId, definitionId, id])
+  @@index([status, availableAt, id])
+}
+
+model BusinessTask {
+  id                      String                     @id @default(uuid()) @db.Uuid
+  businessId              String                     @db.Uuid
+  business                Business                   @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  definitionId            String                     @db.Uuid
+  definition              BusinessWorkflowDefinition @relation(fields: [businessId, definitionId], references: [businessId, id], onDelete: Restrict)
+  runId                   String                     @unique @db.Uuid
+  bookingId               String                     @db.Uuid
+  booking                 Booking                    @relation(fields: [businessId, bookingId], references: [businessId, id], onDelete: Restrict)
+  run                     BusinessWorkflowRun        @relation(fields: [businessId, definitionId, bookingId, runId], references: [businessId, definitionId, bookingId, id], onDelete: Restrict)
+  kind                    BusinessWorkflowTemplate
+  status                  BusinessTaskStatus         @default(OPEN)
+  dueAt                   DateTime                   @db.Timestamptz(3)
+  revision                Int                        @default(1)
+  completedByMembershipId String?                    @db.Uuid
+  completedBy             BusinessMembership?        @relation(fields: [businessId, completedByMembershipId], references: [businessId, id], onDelete: Restrict)
+  completedAt             DateTime?                  @db.Timestamptz(3)
+  closedAt                DateTime?                  @db.Timestamptz(3)
+  invalidatedAt           DateTime?                  @db.Timestamptz(3)
+  invalidationReason      String?                    @db.VarChar(64)
+  createdAt               DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime                   @updatedAt @db.Timestamptz(3)
+  actions                 BusinessWorkflowAction[]
+
+  @@unique([businessId, definitionId, bookingId])
+  @@unique([businessId, definitionId, id])
+  @@unique([businessId, definitionId, bookingId, runId])
+  @@index([businessId, status, dueAt, id])
+}
+
+model BusinessWorkflowAction {
+  runId              String?                    @db.Uuid
+  run                BusinessWorkflowRun?       @relation(fields: [businessId, definitionId, runId], references: [businessId, definitionId, id], onDelete: Restrict)
+  id                 String                     @id @default(uuid()) @db.Uuid
+  businessId         String                     @db.Uuid
+  business           Business                   @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  membershipId       String                     @db.Uuid
+  membership         BusinessMembership         @relation(fields: [businessId, membershipId], references: [businessId, id], onDelete: Restrict)
+  definitionId       String                     @db.Uuid
+  definition         BusinessWorkflowDefinition @relation(fields: [businessId, definitionId], references: [businessId, id], onDelete: Restrict)
+  taskId             String?                    @db.Uuid
+  task               BusinessTask?              @relation(fields: [businessId, definitionId, taskId], references: [businessId, definitionId, id], onDelete: Restrict)
+  operation          BusinessWorkflowOperation
+  idempotencyKey     String                     @db.VarChar(128)
+  requestFingerprint String                     @db.VarChar(64)
+  response           Json                       @db.JsonB
+  createdAt          DateTime                   @default(now()) @db.Timestamptz(3)
+
+  @@unique([businessId, membershipId, operation, idempotencyKey])
+  @@index([businessId, createdAt, id])
+}
+
 // The mock effect and deduplication receipt are the same atomic database row.
 model MockNotificationReceipt {
-  eventId     String @id @db.Uuid
+  eventId     String             @id @db.Uuid
   event       NotificationOutbox @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  outcome     String @db.VarChar(24)
-  reason      String @db.VarChar(32)
-  processedAt DateTime @default(now()) @db.Timestamptz(3)
+  outcome     String             @db.VarChar(24)
+  reason      String             @db.VarChar(32)
+  processedAt DateTime           @default(now()) @db.Timestamptz(3)
 }
 
 // Redacted quarantine: no body, recipient, raw error or broker credentials.
 model MockNotificationRejection {
-  fingerprint String @id @db.VarChar(64)
-  reason      String @db.VarChar(32)
+  fingerprint String   @id @db.VarChar(64)
+  reason      String   @db.VarChar(32)
   receivedAt  DateTime @default(now()) @db.Timestamptz(3)
 }

@@ -27,7 +27,8 @@
     "infra:config": "docker compose config --quiet",
     "publisher": "pnpm --filter @flowpilot/api... build && pnpm --filter @flowpilot/api publisher",
     "worker": "pnpm --filter @flowpilot/api... build && pnpm --filter @flowpilot/api worker",
-    "reminders": "pnpm --filter @flowpilot/api... build && pnpm --filter @flowpilot/api reminders"
+    "reminders": "pnpm --filter @flowpilot/api... build && pnpm --filter @flowpilot/api reminders",
+    "workflow:worker": "pnpm --filter @flowpilot/api... build && pnpm --filter @flowpilot/api workflow:worker"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

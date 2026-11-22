@@ -14,6 +14,16 @@ export async function businessAccess(db: Pick<PrismaClient, 'session' | 'busines
 export function requireOwner(access: BusinessAccess) {
   if (access.membership.role !== 'OWNER') throw new ApiError(403, 'OWNER_REQUIRED', 'Only a business owner can change business settings or availability.');
 }
+export async function lockBusinessMember(tx: Prisma.TransactionClient, request: FastifyRequest, initial: BusinessAccess): Promise<BusinessAccess> {
+  const tokenHash = createHash('sha256').update(request.cookies.flowpilot_session!).digest('hex');
+  await tx.$queryRaw(Prisma.sql`SELECT id FROM "Business" WHERE id = ${initial.membership.businessId}::uuid FOR UPDATE`);
+  await tx.$queryRaw(Prisma.sql`SELECT "tokenHash" FROM "Session" WHERE "tokenHash" = ${tokenHash} FOR SHARE`);
+  await tx.$queryRaw(Prisma.sql`SELECT id FROM "User" WHERE id = ${initial.actor.id}::uuid FOR SHARE`);
+  await tx.$queryRaw(Prisma.sql`SELECT id FROM "BusinessMembership" WHERE id = ${initial.membership.id}::uuid FOR SHARE`);
+  const current = await businessAccess(tx, request);
+  if (current.membership.businessId !== initial.membership.businessId) throw new ApiError(403, 'BUSINESS_ACCESS_REQUIRED', 'Active membership of this business is required.');
+  return current;
+}
 export async function lockOwnedBusiness(tx: Prisma.TransactionClient, request: FastifyRequest, initial: BusinessAccess): Promise<BusinessAccess> {
   const tokenHash = createHash('sha256').update(request.cookies.flowpilot_session!).digest('hex');
   await tx.$queryRaw(Prisma.sql`SELECT id FROM "Business" WHERE id = ${initial.membership.businessId}::uuid FOR UPDATE`);

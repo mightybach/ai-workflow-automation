@@ -8,7 +8,7 @@ import { createDatabaseClient } from '../../../packages/db/dist/index.js';
 const database = process.env.DATABASE_URL;
 if (!database || !['localhost','127.0.0.1','[::1]'].includes(new URL(database).hostname) || !['/flowpilot','/flowpilot_test'].includes(new URL(database).pathname)) throw new Error('Use a local synthetic demo/test database.');
 const root = fileURLToPath(new URL('..',import.meta.url)); const origin = 'http://127.0.0.1:5174';
-const scripts = ['business-setup.mjs','business-settings.mjs','schedule.mjs','schedule-policy.mjs','phase1.mjs','customer-booking.mjs','cancellation.mjs','rescheduling.mjs','booking-admin.mjs'];
+const scripts = ['business-setup.mjs','business-settings.mjs','schedule.mjs','schedule-policy.mjs','phase1.mjs','customer-booking.mjs','cancellation.mjs','rescheduling.mjs','booking-admin.mjs','business-workflows.mjs'];
 const selected = process.argv.slice(2).filter((value) => value !== '--');
 if (selected.some((value) => !scripts.includes(value))) throw new Error('Choose a known browser script.');
 for (const script of selected.length ? selected : scripts) {

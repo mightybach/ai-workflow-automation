@@ -321,3 +321,23 @@ test('internal notification envelopes are minimal, versioned, mock-only and bind
   assert.equal(schema.safeParse({ ...event, eventType: 'BOOKING_REMINDER' }).success, true);
   assert.equal(schema.safeParse({ ...event, eventType: 'BOOKING_REMINDER', previousBookingId: id }).success, false);
 });
+
+test('business workflow commands reject caller authority and unsupported state transitions', () => {
+  const policy = bookingContracts.SetBusinessWorkflowPolicyBodySchema;
+  assert.equal(policy.safeParse({ enabled: true, expectedRevision: 1 }).success, true);
+  for (const patch of [{ enabled: 'true' }, { expectedRevision: 0 }, { businessId: id }, { role: 'OWNER' }, { template: 'SQL' }, { activationId: id }]) {
+    assert.equal(policy.safeParse({ enabled: true, expectedRevision: 1, ...patch }).success, false);
+  }
+  const complete = bookingContracts.CompleteBusinessTaskBodySchema;
+  assert.equal(complete.safeParse({ expectedRevision: 1 }).success, true);
+  assert.equal(complete.safeParse({ expectedRevision: 1, completedByMembershipId: id }).success, false);
+  assert.equal(complete.safeParse({ expectedRevision: 1, status: 'COMPLETED' }).success, false);
+  assert.deepEqual(bookingContracts.BusinessTaskStatusSchema.options, ['OPEN', 'COMPLETED', 'CANCELLED', 'EXPIRED']);
+  assert.equal(bookingContracts.RecordBusinessEnquiryBodySchema.safeParse({ topic: 'ARRIVAL_INFORMATION' }).success, true);
+  for (const extra of [{ message: 'raw customer text' }, { bookingId: id }, { confirmed: true }, { topic: 'SEND_EMAIL' }]) assert.equal(bookingContracts.RecordBusinessEnquiryBodySchema.safeParse({ topic: 'ARRIVAL_INFORMATION', ...extra }).success, false);
+  assert.equal(bookingContracts.BusinessTaskListQuerySchema.safeParse({ businessId: id }).success, false);
+  assert.equal(bookingContracts.BusinessTaskListQuerySchema.safeParse({ status: 'OPEN', date: '2030-02-30' }).success, false);
+  const pending = { operation: 'RECORD_ENQUIRY', key: id, targetId: runId, body: { topic: 'ARRIVAL_INFORMATION' } };
+  assert.equal(bookingContracts.BusinessWorkflowPendingActionSchema.safeParse(pending).success, true);
+  assert.equal(bookingContracts.BusinessWorkflowPendingActionSchema.safeParse({ ...pending, actorId: id }).success, false);
+});

@@ -1,10 +1,11 @@
 import { Prisma } from '@flowpilot/db';
 import { ApiError } from './errors.js';
+import { invalidateWorkflowWork } from './workflow-persistence.js';
 export type SavedAppointment = Prisma.BookingGetPayload<{ include: { proposal: true } }>;
 
 // Caller holds the business exclusive lock and scoped booking lock. Shared by
 // customer/owner cancellation and atomic replacement; never deletes history.
-export async function releaseAppointment(tx: Prisma.TransactionClient, saved: SavedAppointment, clock: () => Date, authorize: (now: Date) => Promise<unknown>): Promise<{ saved: SavedAppointment; now: Date }> {
+export async function releaseAppointment(tx: Prisma.TransactionClient, saved: SavedAppointment, clock: () => Date, authorize: (now: Date) => Promise<unknown>, reason: 'BOOKING_CANCELLED' | 'BOOKING_RESCHEDULED' = 'BOOKING_CANCELLED'): Promise<{ saved: SavedAppointment; now: Date }> {
   const businessId = saved.businessId; const id = saved.id;
   await tx.$queryRaw(Prisma.sql`SELECT id FROM "Staff" WHERE id = ${saved.proposal.staffId}::uuid AND "businessId" = ${businessId}::uuid FOR SHARE`);
   const person = await tx.staff.findUniqueOrThrow({ where: { id: saved.proposal.staffId } });
@@ -27,5 +28,7 @@ export async function releaseAppointment(tx: Prisma.TransactionClient, saved: Sa
     const result = await tx.availabilitySlot.updateMany({ where: { businessId, id: { in: [...ids] }, state: 'RESERVED', bookingSlots: { none: { releasedAt: null } } }, data: { state } });
     if (result.count !== ids.length) throw new ApiError(409, 'SLOT_UNAVAILABLE', 'The full appointment could not be released. Nothing was changed.');
   }
-  return { saved: await tx.booking.update({ where: { id }, data: { status: 'CANCELLED', cancelledAt: now }, include: { proposal: true } }), now };
+  const cancelled = await tx.booking.update({ where: { id }, data: { status: 'CANCELLED', cancelledAt: now }, include: { proposal: true } });
+  await invalidateWorkflowWork(tx, businessId, { bookingId: id }, reason, now);
+  return { saved: cancelled, now };
 }

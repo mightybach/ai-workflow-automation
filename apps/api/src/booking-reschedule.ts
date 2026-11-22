@@ -42,7 +42,7 @@ export async function rescheduleBooking(db: PrismaClient, request: FastifyReques
     if (selection.startAt <= now) throw new ApiError(409, 'SLOT_UNAVAILABLE', 'Choose a future appointment.');
     // Release and replacement claim are inside this same transaction. Any
     // failure (including audit/constraint failure) restores the entire original.
-    await releaseAppointment(tx, original, clock, (time) => customerScope(tx, request, time));
+    await releaseAppointment(tx, original, clock, (time) => customerScope(tx, request, time), 'BOOKING_RESCHEDULED');
     now = clock(); await customerScope(tx, request, now);
     if (selection.expiresAt <= now) throw new ApiError(409, 'PROPOSAL_EXPIRED', 'Review a fresh replacement proposal. Your original appointment was kept.');
     if (selection.startAt <= now) throw new ApiError(409, 'SLOT_UNAVAILABLE', 'Choose a future replacement. Your original appointment was kept.');

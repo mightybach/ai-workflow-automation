@@ -12,7 +12,7 @@ It is also a portfolio project for full-stack development, concurrency-safe rese
 
 **Phases 1–4 are implemented and locally validated, including optional Ollama intent extraction and manual fallback.**
 
-**Phases 1–5 are implemented locally:** owners manage duration limits, dated working time, closures and cancellations; customers explicitly book, cancel and reschedule future appointments. OWNER/STAFF dashboards include scoped booking and redacted audit views. Staff have read-only access; only owners can change business schedules or cancel on the business's behalf. Recurring weekly templates and real notification delivery remain future work.
+**Phases 1–5 are implemented locally:** owners manage duration limits, dated working time, closures and cancellations; customers explicitly book, cancel and reschedule future appointments. OWNER/STAFF dashboards include scoped booking and redacted audit views. Staff can inspect booking resources and complete shared workflow tasks; only owners can change business schedules or cancel on the business's behalf. Recurring weekly templates and real notification delivery remain future work.
 
 **Phase 6 is implemented locally:** transactional events, leased RabbitMQ publication, deduplicated mock receipts, recovery checks and opt-in mock reminders. All effects remain synthetic; no real email/SMS is sent.
 
@@ -26,6 +26,22 @@ It is also a portfolio project for full-stack development, concurrency-safe rese
 - Retained legacy request demo with its original data and permissions.
 
 The web app includes the customer booking page at **http://127.0.0.1:5173/book**, the business dashboard and legacy requests. Choose the default scripted mock or optional local AI assistant; neither can book, cancel, reschedule or confirm. Customers review and explicitly confirm changes through dedicated controls. Owners manage duration limits, dated inventory, closures and business cancellations. Opt-in mock notifications are available through the separate publisher and worker.
+
+**Phase 7 provides two internal SME workflows:** appointment preparation and staff-recorded arrival-information enquiry follow-up. OWNER enables policies; active same-business OWNER/STAFF members explicitly review and complete shared tasks. Cancellation/rescheduling invalidates original work while preserving history. A separate opt-in PostgreSQL worker creates tasks; chat cannot execute workflow actions.
+
+## Business workflows
+
+Sign in as OWNER and find **Business workflows**. Review/confirm enabling **Appointment preparation** before explicitly booking a new future appointment at `/book`. Enable **Arrival enquiry follow-up** to record one synthetic arrival-information enquiry against a selected future booking. No customer free text is stored, no reply is sent, and enquiries do not automatically transfer to replacement bookings.
+
+After building with `pnpm build`, set `WORKFLOW_WORKER_ENABLED=true` in ignored `.env` and run:
+
+```sh
+pnpm --filter @flowpilot/api workflow:worker --once
+```
+
+Refresh workflows to see tasks. Review completion and confirm only after doing the internal work. OWNER and STAFF may complete tasks; OWNER alone controls policies. Use Task status to inspect completed/cancelled/expired history. A run succeeding means its task was created; task completion is a separate human action.
+
+Omit `--once` for a continuous worker in a separate terminal; stop with Ctrl+C. This worker uses PostgreSQL and does not require RabbitMQ. It is separate from the Phase 6 notification `worker`, disabled by default and not started by `pnpm dev`. Disabling policy cancels open work; re-enabling does not revive older work or backfill historical bookings. Policy changes, task completion and enquiry recording preserve stable request keys across uncertain responses/reload and require explicit retry.
 
 ## Mock notifications
 
@@ -77,7 +93,7 @@ Use `DEMO_PASSWORD` from `.env`; the example password is `flowpilot_demo_only`.
 | Account | Access |
 | --- | --- |
 | `owner@flowpilot.test` | Inspect salon setup/bookings/audits, edit duration limits and dated schedules/closures, cancel future bookings |
-| `staff@flowpilot.test` | Read the same salon's setup, bookings and redacted audits |
+| `staff@flowpilot.test` | Read the salon's setup/bookings/audits, record synthetic arrival enquiries and complete shared workflow tasks |
 | `client@flowpilot.test` | Legacy requests: submit/read its own records |
 | `reviewer@flowpilot.test` | Legacy requests: submit/read all demo records |
 | `admin@flowpilot.test` | Legacy requests: submit/read all demo records |
@@ -237,4 +253,4 @@ Run `pnpm ai:evaluate` for the opt-in real-model synthetic evaluation. With the 
 
 This is a loopback-only development/test demo, not a public production booking service. Customer identity is session-based with no account recovery. Rate limits are local/in-memory; no production load or uptime claims are made. Booking reads expose CONFIRMED/CANCELLED status and replacement ancestry. Arbitrary durations/alignment, multi-location, service-specific staff eligibility, delegated STAFF writes, recurring weekly schedules, catalog editors, retention/recovery workflows and integrations need later scoped work. The customer UI restores its current booking; it has no booking-history list or reference-based lookup. Services/employees remain seeded demo setup.
 
-**Next: Phase 7 SME workflows, on separate instruction.** Phase 6 local automation includes capture, publication, mock consumption, recovery checks and fixed-policy mock reminders. Phase 5's local implementation is complete for dated inventory, scoped booking administration and explicit customer changes; manual owner acceptance remains a separate review. The backend stays a modular monolith until an actual need justifies extraction. The mock has a small English grammar; the AI path also deliberately limits supported preference forms. Chat has a 100-item catalog cap (manual lists cap at 1000), plus a stricter AI prompt-size budget and no persisted transcript recovery. No delivery integration or public production deployment is included.
+**Next: Phase 8 portfolio and reproducible demo evidence, on separate instruction.** Phase 7 includes preparation and arrival-enquiry task workflows; broader/free-text enquiries, additional templates, staff assignment and real delivery remain future scope. Phase 5's local implementation is complete for dated inventory, scoped booking administration and explicit customer changes; manual owner acceptance remains a separate review. The backend stays a modular monolith until an actual need justifies extraction. The mock has a small English grammar; the AI path also deliberately limits supported preference forms. Chat has a 100-item catalog cap (manual lists cap at 1000), plus a stricter AI prompt-size budget and no persisted transcript recovery. No delivery integration or public production deployment is included.
