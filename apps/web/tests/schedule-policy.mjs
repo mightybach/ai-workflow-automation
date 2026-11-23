@@ -27,7 +27,7 @@ try {
     const response = target.waitForResponse((value) => value.url().endsWith('/api/v1/auth/login') && value.request().method() === 'POST');
     await target.getByRole('button', { name: 'Sign in', exact: true }).click();
     const result = await response; assert.equal(result.status(), 200, await result.text());
-    try { await target.getByRole('heading', { name: business.name, exact: true }).waitFor(); }
+    try { await target.getByRole('heading', { name: business.name, exact: true }).waitFor(); await target.getByRole('link', { name: 'Inventory', exact: true }).click(); }
     catch (cause) { console.error('Dashboard alerts:', await target.getByRole('alert').allTextContents(), 'Page errors:', errors); throw cause; }
   }
   await login(page, users[0]);

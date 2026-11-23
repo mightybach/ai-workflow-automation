@@ -341,3 +341,9 @@ test('business workflow commands reject caller authority and unsupported state t
   assert.equal(bookingContracts.BusinessWorkflowPendingActionSchema.safeParse(pending).success, true);
   assert.equal(bookingContracts.BusinessWorkflowPendingActionSchema.safeParse({ ...pending, actorId: id }).success, false);
 });
+
+test('booking search accepts a bounded trimmed name/reference without widening authority', () => {
+  assert.equal(bookingContracts.AdminBookingQuerySchema.parse({ search: '  Alex  ' }).search, 'Alex');
+  for (const search of ['', ' ', 'x'.repeat(101)]) assert.equal(bookingContracts.AdminBookingQuerySchema.safeParse({ search }).success, false);
+  assert.equal(bookingContracts.AdminBookingQuerySchema.safeParse({ search: 'FP-123', businessId: id }).success, false);
+});

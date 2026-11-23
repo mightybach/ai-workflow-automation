@@ -3,7 +3,7 @@ import { IdSchema, IdempotencyKeySchema, PaginationQuerySchema, PaginationMetaSc
 import { BusinessDateSchema } from './business.js';
 import { BookingResponseSchema, BookingStatusSchema } from './bookings.js';
 import { ActorTypeSchema } from './enums.js';
-export const AdminBookingQuerySchema = PaginationQuerySchema.extend({ date: BusinessDateSchema.optional(), staffId: IdSchema.optional(), status: BookingStatusSchema.optional() }).strict();
+export const AdminBookingQuerySchema = PaginationQuerySchema.extend({ date: BusinessDateSchema.optional(), staffId: IdSchema.optional(), status: BookingStatusSchema.optional(), search: z.string().trim().min(1).max(100).optional() }).strict();
 export const AdminBookingListSchema = z.object({ items: z.array(BookingResponseSchema).max(50), pagination: PaginationMetaSchema }).strict();
 export const AdminAuditQuerySchema = PaginationQuerySchema.extend({ date: BusinessDateSchema.optional(), bookingId: IdSchema.optional() }).strict();
 export const AdminAuditListSchema = z.object({ items: z.array(z.object({

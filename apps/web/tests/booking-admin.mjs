@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { chromium } from 'playwright';
 import { addCalendarDays, businessDate, createDatabaseClient, hashPassword, localBusinessInstant } from '../../../packages/db/dist/index.js';
@@ -20,8 +21,34 @@ try {
   const owner=await browser.newContext(); const page=await owner.newPage(); const writes=[]; const errors=[]; page.on('pageerror',(error)=>errors.push(error.message));
   page.on('request',(request)=>{if(request.method()==='POST' && /\/admin\/bookings\/[^/]+\/cancel$/.test(request.url())) writes.push({key:request.headers()['idempotency-key'],body:request.postData(),url:request.url()});});
   const panel=(target)=>target.getByRole('region',{name:'Bookings and history',exact:true});
-  const login=async(target,user)=>{await target.goto(base.href); await target.getByLabel('Email',{exact:true}).fill(user.email); await target.getByLabel('Password',{exact:true}).fill(password); await target.getByRole('button',{name:'Sign in',exact:true}).click(); await target.getByRole('heading',{name:business.name,exact:true}).waitFor();};
+  const login=async(target,user)=>{await target.goto(base.href); await target.getByLabel('Email',{exact:true}).fill(user.email); await target.getByLabel('Password',{exact:true}).fill(password); await target.getByRole('button',{name:'Sign in',exact:true}).click(); await target.getByRole('heading',{name:business.name,exact:true}).waitFor(); await target.getByRole('link', { name: 'Bookings', exact: true }).click();};
   await login(page,users[0]); await panel(page).getByLabel('Booking date (dd-mm-yyyy, empty for all)').fill(date.split('-').reverse().join('-'));
+  await panel(page).getByRole('button', { name: 'Clear filters', exact: true }).click();
+  await panel(page).getByLabel('Search customer or reference', { exact: true }).fill('no-such-customer');
+  await panel(page).getByRole('button', { name: 'Search bookings', exact: true }).click();
+  await panel(page).getByRole('heading', { name: 'No appointments found', exact: true }).waitFor();
+  await panel(page).getByLabel('Search customer or reference', { exact: true }).fill(booking.reference.toLowerCase());
+  await panel(page).getByRole('button', { name: 'Search bookings', exact: true }).click();
+  await panel(page).getByRole('button', { name: 'View details for ' + booking.reference, exact: true }).click();
+  const drawer = page.getByRole('dialog', { name: 'Booking details', exact: true }); await drawer.waitFor();
+  await drawer.getByText('demo@example.test', { exact: true }).waitFor();
+  assert.equal(await drawer.getByText('Confirmed', { exact: true }).count(), 1);
+  if (process.env.FLOWPILOT_UI_SCREENSHOT_DIR) {
+    await mkdir(process.env.FLOWPILOT_UI_SCREENSHOT_DIR, { recursive: true });
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+      await page.screenshot({ path: process.env.FLOWPILOT_UI_SCREENSHOT_DIR + '/booking-details-' + theme + '.png' });
+      await page.setViewportSize({ width: 390, height: 844 });
+      assert.equal(await drawer.evaluate((element) => element.scrollWidth <= element.clientWidth), true);
+      await page.screenshot({ path: process.env.FLOWPILOT_UI_SCREENSHOT_DIR + '/booking-details-mobile-' + theme + '.png' });
+      await page.setViewportSize({ width: 1280, height: 900 });
+    }
+  }
+  await page.keyboard.press('Escape'); await drawer.waitFor({ state: 'hidden' });
+  if (process.env.FLOWPILOT_UI_SCREENSHOT_DIR) await page.screenshot({ path: process.env.FLOWPILOT_UI_SCREENSHOT_DIR + '/booking-list.png' });
+  assert.equal(writes.length, 0);
+  await panel(page).getByLabel('Search customer or reference', { exact: true }).fill('sYnThEtIc');
+  await panel(page).getByRole('button', { name: 'Search bookings', exact: true }).click();
   const review=()=>panel(page).getByRole('button',{name:'Review cancellation for '+booking.reference,exact:true}); await review().waitFor();
   await review().click(); assert.equal((await db.booking.findUniqueOrThrow({where:{id:booking.id}})).status,'CONFIRMED');
   await panel(page).getByRole('button',{name:'Keep business appointment',exact:true}).click(); assert.equal(writes.length,0);
@@ -29,6 +56,14 @@ try {
   await review().click(); await panel(page).getByRole('button',{name:'Confirm business cancellation',exact:true}).click();
   await panel(page).getByRole('alert').filter({hasText:'Retry the same business cancellation'}).waitFor();
   assert.equal(await db.bookingSlot.count({where:{bookingId:booking.id,releasedAt:null}}),0);
+  await page.keyboard.press('Escape'); assert.equal(await page.getByRole('dialog', { name: 'Booking details', exact: true }).isVisible(), true);
+  assert.equal(await page.getByRole('button', { name: 'Close booking details', exact: true }).isDisabled(), true);
+  await page.goBack();
+  await page.getByRole('link', { name: 'Overview', exact: true }).waitFor();
+  await page.waitForFunction(() => !document.querySelector('.booking-drawer')?.open);
+  await page.goForward();
+  await panel(page).getByRole('button', { name: 'Retry same business cancellation', exact: true }).waitFor();
+  assert.equal(writes.length, 1);
   await page.reload(); await panel(page).getByRole('button',{name:'Retry same business cancellation',exact:true}).waitFor(); assert.equal(writes.length,1);
   await panel(page).getByRole('button',{name:'Retry same business cancellation',exact:true}).click();
   await panel(page).getByRole('status').filter({hasText:'History retained'}).waitFor(); assert.equal(writes.length,2); assert.deepEqual(writes[0],writes[1]);

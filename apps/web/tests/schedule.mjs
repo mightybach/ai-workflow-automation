@@ -32,7 +32,7 @@ try {
   const box = (target, name = 'Alex', time = '09:30') => panel(target).getByRole('checkbox', { name: new RegExp(`^Select ${name} ${time}`) });
   async function login(target, user) {
     await target.goto(base.href); await target.getByLabel('Email', { exact: true }).fill(user.email); await target.getByLabel('Password', { exact: true }).fill(password);
-    await target.getByRole('button', { name: 'Sign in', exact: true }).click(); await target.getByRole('heading', { name: business.name, exact: true }).waitFor();
+    await target.getByRole('button', { name: 'Sign in', exact: true }).click(); await target.getByRole('heading', { name: business.name, exact: true }).waitFor(); await target.getByRole('link', { name: 'Inventory', exact: true }).click();
   }
   async function load(target) {
     await target.getByLabel('Schedule date (dd-mm-yyyy)', { exact: true }).fill(display); await box(target).waitFor();
@@ -40,7 +40,7 @@ try {
   }
   await login(page, users[0]); await load(page);
   assert.equal(await box(page, 'Alex', '09:00').isDisabled(), true);
-  const stale = await ownerContext.newPage(); await stale.goto(base.href); await load(stale);
+  const stale = await ownerContext.newPage(); await stale.goto(base.href); await stale.getByRole('link', { name: 'Inventory', exact: true }).click(); await load(stale);
   const customer = await browser.newContext(); const requestHeaders = { Origin: base.origin, 'X-Flowpilot-Client': 'web' };
   assert.equal((await customer.request.post(new URL('/api/v1/customer/sessions', base).href, { headers: requestHeaders, data: { businessSlug: business.slug } })).status(), 201);
   const available = async () => (await (await customer.request.get(new URL(`/api/v1/customer/availability?date=${date}&staffId=${staff[0].id}&serviceId=${service.id}&durationMinutes=60`, base).href)).json()).pagination.total;

@@ -25,14 +25,14 @@ test('Phase 5 Step 5 scoped booking administration and redacted audits', async (
   let ip = 1; let offset = 0;
   const get = (path: string, actor = 0) => app.inject({ method: 'GET', url: '/api/v1/admin/' + path, headers: { cookie: cookies[actor]! } });
   const cancel = (id: string, key: string = randomUUID(), actor = 0, server = app) => server.inject({ method: 'POST', url: `/api/v1/admin/bookings/${id}/cancel`, remoteAddress: `127.0.9.${ip++}`, headers: { ...headers, cookie: cookies[actor]!, 'idempotency-key': key }, payload: {} });
-  const book = async (index = 0) => {
+  const book = async (index = 0, name = 'Synthetic') => {
     const startAt = new Date(Date.parse('2030-01-07T23:00Z') + offset++ * 86400000); const parts = [];
     for (let n = 0; n < 2; n++) parts.push(await db.availabilitySlot.create({ data: { businessId: businesses[index]!.id, staffId: staff[index]!.id, startAt: new Date(+startAt + n * 1800000), endAt: new Date(+startAt + (n + 1) * 1800000) } }));
     const bootstrap = await app.inject({ method: 'POST', url: '/api/v1/customer/sessions', headers, payload: { businessSlug: businesses[index]!.slug } }); const cookie = String(bootstrap.headers['set-cookie']).split(';')[0]!;
     const selection = await app.inject({ method: 'POST', url: '/api/v1/customer/booking-proposals', headers: { ...headers, cookie, 'idempotency-key': randomUUID() }, payload: { slotId: parts[0]!.id, serviceId: services[index]!.id, durationMinutes: 60 } }); assert.equal(selection.statusCode,201);
-    const response = await app.inject({ method: 'POST', url: '/api/v1/customer/bookings', headers: { ...headers, cookie, 'idempotency-key': randomUUID() }, payload: { proposalId: selection.json().id, customer: { name: 'Synthetic', email: 'demo@example.test' } } }); assert.equal(response.statusCode,201); return response.json() as { id: string };
+    const response = await app.inject({ method: 'POST', url: '/api/v1/customer/bookings', headers: { ...headers, cookie, 'idempotency-key': randomUUID() }, payload: { proposalId: selection.json().id, customer: { name, email: 'demo@example.test' } } }); assert.equal(response.statusCode,201); return response.json() as { id: string };
   };
-  const first = await book(); const second = await book(); const foreign = await book(1);
+  const first = await book(); const second = await book(0, 'Synthetic 100%_\\ Customer'); const foreign = await book(1);
   await t.test('active OWNER/STAFF reads are scoped, paginated, filtered and never grant legacy global roles', async () => {
     assert.equal((await app.inject({ method: 'GET', url: '/api/v1/admin/bookings' })).statusCode,401); assert.equal((await get('bookings',3)).statusCode,403);
     for (const actor of [0,1]) { const result = await get('bookings?pageSize=1',actor); assert.equal(result.statusCode,200); assert.equal(result.json().pagination.total,2); assert.equal(result.json().items.length,1); assert.ok(result.json().items.every((row: { businessId: string }) => row.businessId === a.id)); }
@@ -41,6 +41,24 @@ test('Phase 5 Step 5 scoped booking administration and redacted audits', async (
     for (const path of ['bookings?businessId='+businesses[1]!.id,'audit-events?actorId='+users[0]!.id,'bookings?date=2030-02-30','audit-events?pageSize=51']) assert.equal((await get(path)).statusCode,400);
     const audit = await get('audit-events?bookingId='+first.id,1); assert.equal(audit.statusCode,200); assert.ok(audit.json().items.length > 0);
     for (const row of audit.json().items) { assert.equal('metadata' in row,false); assert.equal('actorId' in row,false); assert.equal('customerEmail' in row,false); }
+  });
+  await t.test('name/reference search is case-insensitive, literal, paginated and tenant-scoped', async () => {
+    const reference = (await get('bookings/' + first.id)).json().reference as string;
+    const foreignReference = (await get('bookings/' + foreign.id, 2)).json().reference as string;
+    for (const actor of [0, 1]) {
+      const names = await get('bookings?search=sYnThEtIc&pageSize=1', actor);
+      assert.equal(names.statusCode, 200); assert.equal(names.json().pagination.total, 2); assert.equal(names.json().items.length, 1);
+      assert.equal((await get('bookings?search=' + encodeURIComponent(reference.toLowerCase()), actor)).json().items[0].id, first.id);
+      assert.equal((await get('bookings?search=' + encodeURIComponent(foreignReference), actor)).json().pagination.total, 0);
+      for (const literal of ['%', '_', '\\']) {
+        const result = await get('bookings?search=' + encodeURIComponent(literal), actor);
+        assert.equal(result.statusCode, 200); assert.equal(result.json().pagination.total, 1); assert.equal(result.json().items[0].id, second.id);
+      }
+    }
+    assert.equal((await get('bookings?search=Synthetic&date=2030-01-08&status=CONFIRMED&staffId=' + staff[0]!.id)).json().pagination.total, 1);
+    assert.equal((await get('bookings?search=Synthetic&status=CANCELLED')).json().pagination.total, 0);
+    assert.equal((await get('bookings?search=unknown')).json().pagination.total, 0);
+    for (const search of [' ', 'x'.repeat(101)]) assert.equal((await get('bookings?search=' + encodeURIComponent(search))).statusCode, 400);
   });
   await t.test('only OWNER can explicitly cancel same-business future appointments with atomic minimal audited retries', async () => {
     assert.equal((await cancel(first.id,randomUUID(),1)).statusCode,403); assert.equal((await cancel(first.id,randomUUID(),2)).statusCode,404); assert.equal((await cancel(first.id,randomUUID(),3)).statusCode,403);

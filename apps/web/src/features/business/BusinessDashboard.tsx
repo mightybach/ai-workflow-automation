@@ -1,3 +1,4 @@
+import { type DashboardTab } from './dashboardTabs';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import {
   AdminSlotListResponseSchema, BusinessDateSchema, BusinessSetupResponseSchema,
@@ -6,6 +7,7 @@ import {
 } from '@flowpilot/contracts';
 import { apiRequest, errorMessage } from '../../lib/api';
 import { BookingSettings } from './BookingSettings';
+import { DashboardOverview } from './DashboardOverview';
 const ScheduleEditor = lazy(() => import('./ScheduleEditor').then((module) => ({ default: module.ScheduleEditor })));
 const SchedulePolicyEditor = lazy(() => import('./SchedulePolicyEditor').then((module) => ({ default: module.SchedulePolicyEditor })));
 const BookingAdministration = lazy(() => import('./BookingAdministration').then((module) => ({ default: module.BookingAdministration })));
@@ -23,7 +25,10 @@ function Pages({ name, page, total, size, disabled, onPage }: {
     <button className="secondary" disabled={disabled || page * size >= total} aria-label={'Next ' + name + ' page'} onClick={() => onPage(page + 1)}>Next</button>
   </nav>;
 }
-export function BusinessDashboard({ actorId }: { actorId: string }) {
+export function BusinessDashboard({ actorId, actorEmail, activeTab }: { actorId: string; actorEmail: string; activeTab: DashboardTab }) {
+  const [visited, setVisited] = useState<Set<DashboardTab>>(() => new Set([activeTab]));
+  useEffect(() => { setVisited((previous) => previous.has(activeTab) ? previous : new Set([...previous, activeTab])); }, [activeTab]);
+  const show = (tab: DashboardTab) => activeTab === tab || visited.has(tab);
   const [setup, setSetup] = useState<BusinessSetupResponse | null>(null);
   const [staff, setStaff] = useState<StaffListResponse | null>(null);
   const [services, setServices] = useState<ServiceListResponse | null>(null);
@@ -70,6 +75,7 @@ export function BusinessDashboard({ actorId }: { actorId: string }) {
 
   useEffect(() => {
     if (!setup) return;
+    if (activeTab !== 'inventory') return;
     const parsed = BusinessDateSchema.safeParse(apiDate(date));
     if (!parsed.success) { setSlots(null); setSlotError('Enter a valid date as dd-mm-yyyy.'); setSlotsLoading(false); return; }
     const controller = new AbortController();
@@ -82,26 +88,24 @@ export function BusinessDashboard({ actorId }: { actorId: string }) {
       .catch((cause: unknown) => { if (!controller.signal.aborted) { setSlots(null); setSlotError(errorMessage(cause)); } })
       .finally(() => { if (!controller.signal.aborted) setSlotsLoading(false); });
     return () => controller.abort();
-  }, [setup, date, staffId, state, page, refresh, inventoryRefresh]);
+  }, [setup, date, staffId, state, page, refresh, inventoryRefresh, activeTab]);
 
-  return <div>
-    <div className="section-heading">
-      <h2>Business dashboard</h2>
+  return <div className="business-dashboard">
+    <div className="business-summary">
+      <div className="business-summary-info">
+        {setup && <><h2 id="business-name">{setup.business.name}</h2><span className="badge">{setup.membership.role}</span></>}
+        <span className="business-summary-email">{actorEmail}</span>
+        {setup && <span className="business-summary-timezone">Time zone: {setup.business.timezone}</span>}
+      </div>
       <button className="secondary" disabled={loading} onClick={() => setRefresh((value) => value + 1)}>Refresh setup</button>
     </div>
-    {loading ? <p role="status">Loading business setup…</p> : error ? <p role="alert" className="error">{error}</p> : setup && <>
-      <section aria-labelledby="business-name">
-        <span className="badge">Synthetic salon · {setup.membership.role}</span>
-        <h2 id="business-name">{setup.business.name}</h2>
-        <p>Time zone: <strong>{setup.business.timezone}</strong></p>
-        <p className="note">Inspect staff, services and slot inventory. Business owners can edit booking settings and block or reopen future times.</p>
-      </section>
-      <BookingSettings role={setup.membership.role} refresh={refresh} />
-      <Suspense fallback={<p role="status">Loading workflows…</p>}><BusinessWorkflows key={setup.business.id + actorId} actorId={actorId} businessId={setup.business.id} role={setup.membership.role} today={setup.today} /></Suspense>
-      {staff && <Suspense fallback={<p role="status">Loading booking administration…</p>}><BookingAdministration businessId={setup.business.id} actorId={actorId} role={setup.membership.role} today={setup.today} timezone={setup.business.timezone} staff={staff.items} onSaved={() => setInventoryRefresh((n) => n + 1)} /></Suspense>}
+    {loading && !setup ? <p role="status">Loading business setup…</p> : error ? <p role="alert" className="error">{error}</p> : setup && <>
+      {show('overview') && <div hidden={activeTab !== 'overview'}><DashboardOverview date={BusinessDateSchema.safeParse(apiDate(date)).success ? apiDate(date) : setup.today} today={setup.today} timezone={setup.business.timezone} teamTotal={staff?.pagination.total ?? null} serviceTotal={services?.pagination.total ?? null} refresh={refresh + inventoryRefresh} onDate={(value) => { setDate(displayDate(value)); setPage(1); }} /></div>}
+      {show('appointments') && staff && <div id="appointments" hidden={activeTab !== 'appointments'}><Suspense fallback={<p role="status">Loading booking administration…</p>}><BookingAdministration active={activeTab === 'appointments'} businessId={setup.business.id} actorId={actorId} role={setup.membership.role} today={setup.today} timezone={setup.business.timezone} staff={staff.items} onSaved={() => setInventoryRefresh((n) => n + 1)} /></Suspense></div>}
+      {show('workflows') && <div id="workflows" hidden={activeTab !== 'workflows'}><Suspense fallback={<p role="status">Loading workflows…</p>}><BusinessWorkflows key={setup.business.id + actorId} actorId={actorId} businessId={setup.business.id} role={setup.membership.role} today={setup.today} onChanged={() => setInventoryRefresh((n) => n + 1)} /></Suspense></div>}
       {listError && <p role="alert" className="error">{listError}</p>}
-      {listsLoading ? <p role="status">Loading staff and services…</p> : <div className="setup-grid">
-        <section aria-labelledby="staff-heading">
+      {listsLoading ? (activeTab === 'team' || activeTab === 'services') && <p role="status">Loading staff and services…</p> : <div className="setup-grid">
+        <section hidden={activeTab !== 'team'} id="team" aria-labelledby="staff-heading">
           <h3 id="staff-heading">Staff</h3>
           {staff && <>
             {staff.items.length === 0 ? <p>No staff configured.</p> : <ul className="setup-list">{staff.items.map((person) =>
@@ -109,7 +113,7 @@ export function BusinessDashboard({ actorId }: { actorId: string }) {
             {staff.pagination.total > 50 && <Pages name="staff" page={staffPage} total={staff.pagination.total} size={50} disabled={listsLoading} onPage={setStaffPage} />}
           </>}
         </section>
-        <section aria-labelledby="services-heading">
+        <section hidden={activeTab !== 'services'} id="services" aria-labelledby="services-heading">
           <h3 id="services-heading">Services</h3>
           {services && <>
             {services.items.length === 0 ? <p>No services configured.</p> : <ul className="setup-list">{services.items.map((service) =>
@@ -118,6 +122,8 @@ export function BusinessDashboard({ actorId }: { actorId: string }) {
           </>}
         </section>
       </div>}
+      {show('settings') && <div id="settings" hidden={activeTab !== 'settings'}><BookingSettings role={setup.membership.role} refresh={refresh} /></div>}
+      {show('inventory') && <div id="inventory" hidden={activeTab !== 'inventory'}>
       {setup.membership.role === 'OWNER' && <>
         <Suspense fallback={<p role="status">Loading working hours editor…</p>}><SchedulePolicyEditor today={setup.today} staff={staff?.items ?? []} onSaved={() => setInventoryRefresh((value) => value + 1)} /></Suspense>
         <Suspense fallback={<p role="status">Loading inventory editor…</p>}><ScheduleEditor today={setup.today} staff={staff?.items ?? []} onSaved={() => setInventoryRefresh((value) => value + 1)} /></Suspense>
@@ -154,6 +160,7 @@ export function BusinessDashboard({ actorId }: { actorId: string }) {
           <Pages name="slots" page={page} total={slots.pagination.total} size={20} disabled={slotsLoading} onPage={setPage} />
         </>}
       </section>
+      </div>}
     </>}
   </div>;
 }

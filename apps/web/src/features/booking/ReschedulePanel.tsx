@@ -72,17 +72,17 @@ export function ReschedulePanel({ booking, session, services, staff, draft, busy
         <label htmlFor="replacement-service">Replacement service</label><select id="replacement-service" value={serviceId} onChange={(event) => { setServiceId(event.target.value); setAvailable(null); }}>{services.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
         <label htmlFor="replacement-duration">Replacement duration</label><select id="replacement-duration" value={duration} onChange={(event) => { setDuration(Number(event.target.value)); setAvailable(null); }}>{Array.from({ length: session.maxBookingDurationMinutes / 30 }, (_, n) => (n + 1) * 30).map((minutes) => <option key={minutes} value={minutes}>{minutes} minutes</option>)}</select>
         <label htmlFor="replacement-staff">Replacement staff</label><select id="replacement-staff" value={staffId} onChange={(event) => { setStaffId(event.target.value); setAvailable(null); }}><option value="">Any staff</option>{staff.map((item) => <option key={item.id} value={item.id}>{item.displayName}</option>)}</select>
-        <button disabled={!serviceId} onClick={() => { void search(); }}>View replacement times</button>
+        <div className="row-actions"><button disabled={!serviceId} onClick={() => { void search(); }}>View replacement times</button></div>
       </fieldset>
       {available && !attempt?.proposal && <><p>{available.pagination.total} replacement starts available.</p><ul className="appointment-options">{available.items.map((slot) => <li key={slot.slotId}><button className="secondary" disabled={busy} onClick={() => { void select(slot); }}>Review replacement {slot.staffName} {time(slot.startAt, slot.timezone)}</button><span>{slot.durationMinutes} minutes</span></li>)}</ul>
-        <button disabled={busy || available.pagination.page <= 1} onClick={() => { void search(available.pagination.page - 1); }}>Previous replacements</button><button disabled={busy || available.pagination.page * 10 >= available.pagination.total} onClick={() => { void search(available.pagination.page + 1); }}>Next replacements</button></>}
+        <nav className="pagination" aria-label="Replacement appointment pages"><button disabled={busy || available.pagination.page <= 1} onClick={() => { void search(available.pagination.page - 1); }}>Previous replacements</button><button disabled={busy || available.pagination.page * 10 >= available.pagination.total} onClick={() => { void search(available.pagination.page + 1); }}>Next replacements</button></nav></>}
       {attempt?.proposal && !proposal && <button disabled={busy} onClick={() => { onBusy(true); void recover().catch((cause: unknown) => setError(errorMessage(cause))).finally(() => onBusy(false)); }}>Retry replacement review</button>}
       {proposal && <div className="schedule-review"><h4>Review replacement appointment</h4><p>Original: {booking.reference}<br />{booking.serviceName} with {booking.staffName}, {time(booking.startAt, booking.timezone)} – {time(booking.endAt, booking.timezone)}</p>
         <p>Replacement: {proposal.serviceName} with {proposal.staffName}<br />{time(proposal.startAt, proposal.timezone)} – {time(proposal.endAt, proposal.timezone)} · {proposal.durationMinutes} minutes</p>
         <p>Review expires {time(proposal.expiresAt, proposal.timezone)}. If the replacement fails, your original appointment remains.</p>
         <button disabled={busy || !attempt?.confirmation && Date.parse(proposal.expiresAt) <= clock} onClick={() => { void confirm(); }}>{attempt?.confirmation ? 'Retry same rescheduling' : 'Confirm rescheduling'}</button>
       </div>}
-      <button className="secondary" disabled={busy || !!attempt?.confirmation} onClick={abandon}>Keep original appointment</button>
+      <div className="row-actions"><button className="secondary" disabled={busy || !!attempt?.confirmation} onClick={abandon}>Keep original appointment</button></div>
     </>}
   </section>;
 }

@@ -17,7 +17,7 @@ try {
   }
   const owner = await browser.newContext(); const page = await owner.newPage(); const errors = []; page.on('pageerror', (e) => errors.push(e.message));
   const panel = (target) => target.getByRole('region', { name: 'Business workflows', exact: true });
-  const login = async (target, user) => { await target.goto(base.href); await target.getByLabel('Email', { exact: true }).fill(user.email); await target.getByLabel('Password', { exact: true }).fill(password); await target.getByRole('button', { name: 'Sign in', exact: true }).click(); await target.getByRole('heading', { name: business.name, exact: true }).waitFor(); await panel(target).getByText('Appointment preparation', { exact: true }).waitFor(); };
+  const login = async (target, user) => { await target.goto(base.href); await target.getByLabel('Email', { exact: true }).fill(user.email); await target.getByLabel('Password', { exact: true }).fill(password); await target.getByRole('button', { name: 'Sign in', exact: true }).click(); await target.getByRole('heading', { name: business.name, exact: true }).waitFor(); await target.getByRole('link', { name: 'Workflows', exact: true }).click(); await panel(target).getByText('Appointment preparation', { exact: true }).waitFor(); };
   await login(page, users[0]);
   const preparation = () => panel(page).getByRole('button', { name: 'Review enable appointment preparation', exact: true });
   await preparation().click(); await panel(page).getByRole('button', { name: 'Keep current state', exact: true }).click(); assert.equal(await db.businessWorkflowDefinition.count({ where: { businessId: business.id } }), 0);

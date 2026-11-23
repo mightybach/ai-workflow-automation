@@ -11,7 +11,7 @@ const at = (date: string, timezone: string) => {
   const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? '';
   return `${get('day')}-${get('month')}-${get('year')} ${get('hour')}:${get('minute')}`;
 };
-export function BusinessWorkflows({ actorId, businessId, role, today }: { actorId: string; businessId: string; role: 'OWNER' | 'STAFF'; today: string }) {
+export function BusinessWorkflows({ actorId, businessId, role, today, onChanged }: { actorId: string; businessId: string; role: 'OWNER' | 'STAFF'; today: string; onChanged?(): void }) {
   const storageKey = `flowpilot-workflow-action:v1:${actorId}:${businessId}`;
   const [policies, setPolicies] = useState<BusinessWorkflowPolicy[]>([]);
   const [tasks, setTasks] = useState<BusinessTask[]>([]);
@@ -62,7 +62,7 @@ export function BusinessWorkflows({ actorId, businessId, role, today }: { actorI
       const path = action.operation === 'SET_POLICY' ? `/admin/workflows/${action.targetId}` : action.operation === 'COMPLETE_TASK' ? `/admin/tasks/${action.targetId}/complete` : `/admin/bookings/${action.targetId}/enquiry-follow-up`;
       const schema = action.operation === 'SET_POLICY' ? BusinessWorkflowPolicySchema : action.operation === 'COMPLETE_TASK' ? BusinessTaskSchema : BusinessEnquiryResultSchema;
       await apiRequest<unknown>(path, schema, { method: action.operation === 'SET_POLICY' ? 'PUT' : 'POST', body: action.body, idempotencyKey: action.key });
-      sessionStorage.removeItem(storageKey); setPending(null); setNotice('Action saved. Refreshing current workflow state.'); setRevision((n) => n + 1);
+      sessionStorage.removeItem(storageKey); setPending(null); setNotice('Action saved. Refreshing current workflow state.'); setRevision((n) => n + 1); onChanged?.();
     } catch (cause) {
       const definitive = cause instanceof ApiFailure && [400, 404, 409].includes(cause.status);
       if (definitive) { try { sessionStorage.removeItem(storageKey); setPending(null); } catch { setStorageReady(false); } setRevision((n) => n + 1); }
@@ -79,27 +79,27 @@ export function BusinessWorkflows({ actorId, businessId, role, today }: { actorI
     <p>Internal tasks only. Chat cannot enable workflows or complete work. Tasks are due at the appointment start.</p>
     {error && <p role="alert" className="error">{error}</p>}{notice && <p role="status">{notice}</p>}
     {pending && <div><p role="status">An action is awaiting confirmation of its result. Reloading only reads current state.</p><button disabled={busy || !storageReady} onClick={() => void send(pending)}>Retry same action</button></div>}
-    {policies.map((policy) => <div key={policy.id}><strong>{label(policy.template)}</strong><p>{policy.enabled ? 'Enabled' : 'Disabled'}</p>
+    <div className="workflow-policy-grid">{policies.map((policy) => <div className="workflow-policy-card" key={policy.id}><strong>{label(policy.template)}</strong><p className={'policy-state ' + (policy.enabled ? 'is-enabled' : '')}>{policy.enabled ? 'Enabled' : 'Disabled'}</p>
       {role === 'OWNER' ? <button className="secondary" disabled={blocked} onClick={() => setReview({ operation: 'SET_POLICY', targetId: policy.id, key: crypto.randomUUID(), body: { enabled: !policy.enabled, expectedRevision: policy.revision } })}>Review {policy.enabled ? 'disable' : 'enable'} {label(policy.template).toLowerCase()}</button> : <p className="note">Only an OWNER can change this policy.</p>}
-    </div>)}
+    </div>)}</div>
     <h4>Record a synthetic arrival-information enquiry</h4><p>A staff-recorded enquiry creates one follow-up task per booking. No customer text or external message is stored or sent.</p>
     <label htmlFor="workflow-enquiry-date">Enquiry appointment date (dd-mm-yyyy)</label><input id="workflow-enquiry-date" value={date} disabled={busy} onChange={(event) => { setDate(event.target.value); setBookingPage(1); }} placeholder="dd-mm-yyyy" />
     {!BusinessDateSchema.safeParse(displayDate(date)).success && <p className="note">Enter a valid enquiry appointment date as dd-mm-yyyy.</p>}
     <label htmlFor="workflow-enquiry-booking">Enquiry booking</label><select id="workflow-enquiry-booking" value={bookingId} disabled={blocked} onChange={(event) => setBookingId(event.target.value)}><option value="">Select a future booking</option>{bookings.map((booking) => <option key={booking.id} value={booking.id}>{booking.reference}</option>)}</select>
-    <button className="secondary" disabled={busy || bookingPage <= 1} onClick={() => setBookingPage((n) => n - 1)}>Previous enquiry bookings</button>
+    <div className="row-actions"><button className="secondary" disabled={busy || bookingPage <= 1} onClick={() => setBookingPage((n) => n - 1)}>Previous enquiry bookings</button>
     <button className="secondary" disabled={busy || bookingPage * 10 >= bookingTotal} onClick={() => setBookingPage((n) => n + 1)}>Next enquiry bookings</button>
-    <button disabled={blocked || !bookingId || !policies.some((p) => p.template === 'FOLLOW_UP_ENQUIRY' && p.enabled)} onClick={() => setReview({ operation: 'RECORD_ENQUIRY', targetId: bookingId, key: crypto.randomUUID(), body: { topic: 'ARRIVAL_INFORMATION' } })}>Review arrival enquiry</button>
+    <button disabled={blocked || !bookingId || !policies.some((p) => p.template === 'FOLLOW_UP_ENQUIRY' && p.enabled)} onClick={() => setReview({ operation: 'RECORD_ENQUIRY', targetId: bookingId, key: crypto.randomUUID(), body: { topic: 'ARRIVAL_INFORMATION' } })}>Review arrival enquiry</button></div>
     <h4>Tasks</h4><label htmlFor="workflow-task-status">Task status</label><select id="workflow-task-status" value={status} disabled={busy} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="">All states</option>{['OPEN', 'COMPLETED', 'CANCELLED', 'EXPIRED'].map((state) => <option key={state}>{state}</option>)}</select>
     <label htmlFor="workflow-task-date">Task date (dd-mm-yyyy, empty for all)</label><input id="workflow-task-date" value={taskDate} disabled={busy} placeholder="dd-mm-yyyy" onChange={(event) => { setTaskDate(event.target.value); setPage(1); }} />
     {!loading && !tasks.length && <p>No tasks in this view. New preparation tasks require an enabled policy and the workflow worker.</p>}
-    {tasks.map((task) => <article key={task.id} aria-label={`${label(task.kind)} ${task.bookingReference}`}><h4>{label(task.kind)} · {task.bookingReference}</h4>
+    {tasks.map((task) => <article className="workflow-task-card" key={task.id} aria-label={`${label(task.kind)} ${task.bookingReference}`}><h4>{label(task.kind)} · {task.bookingReference}</h4>
       <p>{task.serviceName} with {task.staffName} · {at(task.startAt, task.timezone)} · {task.timezone}</p><p>Status: {task.status}{task.invalidatedAt ? ` · Invalidated: ${task.invalidationReason}` : ''}</p>
       {task.status === 'OPEN' && <button disabled={blocked || Date.parse(task.dueAt) <= Date.now()} onClick={() => setReview({ operation: 'COMPLETE_TASK', targetId: task.id, key: crypto.randomUUID(), body: { expectedRevision: task.revision } })}>Review completion</button>}
     </article>)}
-    <nav aria-label="Workflow task pages"><button className="secondary" disabled={busy || page <= 1} onClick={() => setPage((n) => n - 1)}>Previous tasks</button><span> Page {page} · {total} tasks </span><button className="secondary" disabled={busy || page * 10 >= total} onClick={() => setPage((n) => n + 1)}>Next tasks</button></nav>
+    <nav className="pagination" aria-label="Workflow task pages"><button className="secondary" disabled={busy || page <= 1} onClick={() => setPage((n) => n - 1)}>Previous tasks</button><span> Page {page} · {total} tasks </span><button className="secondary" disabled={busy || page * 10 >= total} onClick={() => setPage((n) => n + 1)}>Next tasks</button></nav>
     {review && <div role="region" aria-label="Review workflow action"><h4>Review workflow action</h4>
       <p>{selectedPolicy ? label(selectedPolicy.template) : selectedTask ? `${label(selectedTask.kind)} · ${selectedTask.bookingReference} · ${at(selectedTask.startAt, selectedTask.timezone)}` : selectedBooking ? `Arrival-information enquiry · ${selectedBooking.reference}` : 'The selected item is no longer in this view. Keep current state, refresh and select it again.'}</p>
       <p>{review.operation === 'SET_POLICY' ? review.body.enabled ? 'Enable this workflow for new work? Historical bookings will not be backfilled.' : 'Disable this workflow? Open tasks will be cancelled and pending runs suppressed.' : review.operation === 'COMPLETE_TASK' ? 'Confirm that you have completed this task. This does not change the booking.' : 'Record one arrival-information enquiry for this booking? Staff will review an internal task; nothing is sent externally.'}</p>
-      <button disabled={busy} onClick={() => setReview(null)}>Keep current state</button><button disabled={blocked || !reviewVisible} onClick={() => void send(review)}>Confirm workflow action</button></div>}
+      <div className="row-actions"><button disabled={busy} onClick={() => setReview(null)}>Keep current state</button><button disabled={blocked || !reviewVisible} onClick={() => void send(review)}>Confirm workflow action</button></div></div>}
   </section>;
 }

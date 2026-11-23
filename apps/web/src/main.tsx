@@ -3,16 +3,25 @@ import { createRoot } from 'react-dom/client';
 import { HealthResponseSchema, SessionResponseSchema, LogoutResponseSchema, type UserResponse } from '@flowpilot/contracts';
 import { LoginForm } from './features/auth/LoginForm';
 import { PersistedRequests } from './features/requests/PersistedRequests';
+import { type DashboardTab, dashboardTabs, dashboardTabFromHash } from './features/business/dashboardTabs';
 import { BusinessDashboard } from './features/business/BusinessDashboard';
 const CustomerBookingPage = lazy(() => import('./features/booking/CustomerBookingPage').then((module) => ({ default: module.CustomerBookingPage })));
 import { apiRequest, errorMessage } from './lib/api';
 import './style.css';
+import './redesign.css';
+import { Icon } from './components/Icon';
+import { ThemeToggle, initializeTheme } from './components/ThemeToggle';
+
+initializeTheme();
 
 function App() {
   const [user, setUser] = useState<UserResponse | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
   const [authError, setAuthError] = useState('');
   const [signingOut, setSigningOut] = useState(false);
+  const [activeTab, setActiveTab] = useState<DashboardTab>(dashboardTabFromHash);
+  useEffect(() => { window.scrollTo(0, 0); }, [activeTab]);
+  useEffect(() => { const changed = () => { setActiveTab(dashboardTabFromHash()); setView('business'); }; window.addEventListener('hashchange', changed); return () => window.removeEventListener('hashchange', changed); }, []);
   const [view, setView] = useState<'business' | 'legacy'>('business');
   useEffect(() => {
     const controller = new AbortController();
@@ -51,22 +60,28 @@ function App() {
     return () => { active = false; controller.abort(); clearTimeout(timer); };
   }, [attempt]);
   return (
-    <main>
-      <p className="eyebrow">FLOWPILOT BOOKING / LOCAL DEMO</p>
-      <h1>Your salon, ready to plan.</h1>
-      <p>Inspect your team, services and 30-minute slot inventory in one place.</p>
-      <p><a href="/book">Book a synthetic appointment</a></p>
+    <div className={'app-shell ' + (!user ? 'signed-out' : '')}>
+      <a className="skip-link" href="#main-content">Skip to main content</a>
+      <aside className="app-rail" aria-label="Main navigation">
+        <a className="brand-mark" href="/" aria-label="FlowPilot home">f<span>p</span></a>
+        <nav aria-label="Workspaces">
+          {dashboardTabs.filter((tab) => user || tab.id === 'overview').map((tab) => <a key={tab.id} className={view === 'business' && activeTab === tab.id ? 'rail-item active' : 'rail-item'} href={'#' + tab.id} aria-current={view === 'business' && activeTab === tab.id ? 'page' : undefined} onClick={() => { setActiveTab(tab.id); setView('business'); }}><Icon name={tab.icon} /><span>{tab.label}</span></a>)}
+          {user && <button className={view === 'legacy' ? 'rail-item active' : 'rail-item'} aria-label="Legacy requests" aria-pressed={view === 'legacy'} onClick={() => setView('legacy')}><Icon name="folder" /><span>Requests</span></button>}
+        </nav>
+        <a href="/book" className="rail-book" aria-label="Open customer booking"><Icon name="arrow" /></a>
+        <span className="rail-monogram" aria-label={user ? 'Signed in' : 'Local demo'}>{user?.email.slice(0, 1).toUpperCase() ?? 'F'}</span>
+      </aside>
+      <div className="app-workspace">
+      <header className="workspace-header"><div><span className="header-breadcrumb">FlowPilot <span>/</span> {view === 'legacy' ? 'Requests' : 'Workspace'}</span><h1>{user ? view === 'legacy' ? 'Legacy requests' : dashboardTabs.find((tab) => tab.id === activeTab)?.label : 'Welcome to FlowPilot'}</h1></div>
+        <div className="header-actions"><span className="demo-tag"><i />Local demo</span><ThemeToggle />{user && <button className="secondary" disabled={signingOut} onClick={() => { void signOut(); }}>Sign out</button>}</div>
+      </header>
+      <main className="workspace-main" id="main-content">
       {authError && <p role="alert" className="error">{authError}</p>}
       {checkingSession ? <p role="status">Checking session…</p> : user ? <>
-        <div className="session-bar"><p>Signed in as {user.email}</p><button className="secondary" disabled={signingOut} onClick={() => { void signOut(); }}>Sign out</button></div>
-        <nav className="workspace-tabs" aria-label="Workspaces">
-          <button className={view === 'business' ? '' : 'secondary'} aria-pressed={view === 'business'} onClick={() => setView('business')}>Business setup</button>
-          <button className={view === 'legacy' ? '' : 'secondary'} aria-pressed={view === 'legacy'} onClick={() => setView('legacy')}>Legacy requests</button>
-        </nav>
-        {view === 'business' ? <BusinessDashboard key={user.id} actorId={user.id} /> : <PersistedRequests key={user.id} user={user} />}
-      </> : <LoginForm onSignIn={(signedIn) => { setAuthError(''); setView('business'); setUser(signedIn); }} />}
-      <section aria-labelledby="foundation-title">
-        <span className="badge">Phase 0</span>
+        {view === 'legacy' && <p className="signed-in-note">{user.email}</p>}
+        {view === 'business' ? <BusinessDashboard key={user.id} actorId={user.id} actorEmail={user.email} activeTab={activeTab} /> : <PersistedRequests key={user.id} user={user} />}
+      </> : <div className="login-layout"><div className="login-story"><p className="eyebrow">A LITTLE LESS BUSYWORK</p><h2>Good days start<br />with a clear plan.</h2><p>Appointments, your team and the little things in between. Together in one thoughtful workspace.</p><a className="text-link" href="/book">Here for an appointment? <Icon name="arrow" size={18} /></a><div className="login-art" aria-hidden="true"><span className="art-orbit" /><span className="art-tile"><Icon name="calendar" size={36} /></span><span className="art-caption">A little more in flow.</span></div></div><LoginForm onSignIn={(signedIn) => { setAuthError(''); setView('business'); setUser(signedIn); }} /></div>}
+      <section className="foundation-status" aria-labelledby="foundation-title">
         <h2 id="foundation-title">Foundation status</h2>
         <p role="status">{status}</p>
         <button onClick={() => { setStatus('Checking API connection…'); setAttempt(attempt + 1); }}>
@@ -74,7 +89,8 @@ function App() {
         </button>
         <p className="note">Synthetic data only. Customer booking and the optional local AI assistant are at /book.</p>
       </section>
-    </main>
+      </main></div>
+    </div>
   );
 }
 

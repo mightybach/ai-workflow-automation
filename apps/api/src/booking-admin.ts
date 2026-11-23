@@ -51,7 +51,11 @@ export function bookingAdminRoutes(app: FastifyInstance, db: PrismaClient, clock
       const { membership } = await businessAccess(tx, request); const businessId = membership.businessId;
       if (query.staffId && !await tx.staff.findFirst({ where: { id: query.staffId, businessId } })) throw new ApiError(404, 'NOT_FOUND', 'Staff member not found.');
       const bounds = query.date ? businessDayBounds(query.date, membership.business.timezone) : null;
-      const where: Prisma.BookingWhereInput = { businessId, ...(query.status ? { status: query.status } : {}), proposal: { ...(query.staffId ? { staffId: query.staffId } : {}), ...(bounds ? { startAt: { gte: bounds.start, lt: bounds.end } } : {}) } };
+      const search = query.search?.replace(/[\\%_]/g, (character) => '\\' + character);
+      const where: Prisma.BookingWhereInput = { businessId,
+        ...(search ? { OR: [{ reference: { contains: search, mode: 'insensitive' as const } }, { customerName: { contains: search, mode: 'insensitive' as const } }] } : {}),
+        ...(query.status ? { status: query.status } : {}), proposal: { ...(query.staffId ? { staffId: query.staffId } : {}), ...(bounds ? { startAt: { gte: bounds.start, lt: bounds.end } } : {}) } };
+
       const rows = await tx.booking.findMany({ where, include: { proposal: true }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (query.page - 1) * query.pageSize, take: query.pageSize });
       return AdminBookingListSchema.parse({ items: rows.map(bookingDto), pagination: { page: query.page, pageSize: query.pageSize, total: await tx.booking.count({ where }) } });
     }, { isolationLevel: 'RepeatableRead' });

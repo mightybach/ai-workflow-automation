@@ -29,7 +29,7 @@ try {
     await page.getByLabel('Email', { exact: true }).fill(user.email);
     await page.getByLabel('Password', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-    await page.getByRole('heading', { name: business.name, exact: true }).waitFor();
+    await page.getByRole('heading', { name: business.name, exact: true }).waitFor(); await page.getByRole('link', { name: 'Settings', exact: true }).click();
     await page.getByText('Current maximum appointment length:', { exact: false }).waitFor();
   }
   const settingsPanel = (target) => target.getByRole('region', { name: 'Booking settings', exact: true });
@@ -38,6 +38,7 @@ try {
   assert.equal(await maximum().inputValue(), '120');
   const stale = await ownerContext.newPage();
   await stale.goto(base.href);
+  await stale.getByRole('link', { name: 'Settings', exact: true }).click();
   await stale.getByLabel('Maximum appointment length', { exact: true }).waitFor();
 
   const customerContext = await browser.newContext();
@@ -63,6 +64,11 @@ try {
   await page.getByRole('button', { name: 'Retry same save', exact: true }).waitFor();
   await page.getByRole('alert').filter({ hasText: 'Retry the same save' }).waitFor();
   assert.equal((await db.business.findUniqueOrThrow({ where: { id: business.id } })).maxBookingDurationMinutes, 60);
+  assert.equal(await maximum().isDisabled(), true);
+  await page.getByRole('link', { name: 'Overview', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: 'Retry same save', exact: true }).count(), 0);
+  assert.equal(attempts.length, 1);
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
   assert.equal(await maximum().isDisabled(), true);
   await page.getByRole('button', { name: 'Retry same save', exact: true }).click();
   await page.getByRole('status').filter({ hasText: 'Booking settings saved' }).waitFor();

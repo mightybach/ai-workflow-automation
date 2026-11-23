@@ -28,10 +28,13 @@ try {
   await page.goto(base);
   await login('owner@flowpilot.test');
   await page.getByRole('heading', { name: 'FlowPilot Demo Salon', exact: true }).waitFor();
-  await page.getByText('Synthetic salon · OWNER', { exact: true }).waitFor();
+  await page.getByText('OWNER', { exact: true }).waitFor();
+  await page.getByRole('link', { name: 'Team', exact: true }).click();
   await page.getByRole('heading', { name: 'Staff', exact: true }).waitFor();
   await page.getByRole('region', { name: 'Staff', exact: true }).getByText('Alex', { exact: true }).waitFor();
+  await page.getByRole('link', { name: 'Services', exact: true }).click();
   await page.getByRole('region', { name: 'Services', exact: true }).getByText('Haircut', { exact: true }).waitFor();
+  await page.getByRole('link', { name: 'Inventory', exact: true }).click();
   const dateInput = page.getByLabel('Date', { exact: true });
   let date = process.env.SEED_START_DATE || (await dateInput.inputValue()).split('-').reverse().join('-');
   const parsed = new Date(date + 'T00:00:00Z');
@@ -71,7 +74,7 @@ try {
   if (process.env.FLOWPILOT_BOOKING_SCREENSHOT) await page.screenshot({ path: process.env.FLOWPILOT_BOOKING_SCREENSHOT, fullPage: true });
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await login('staff@flowpilot.test');
-  await page.getByText('Synthetic salon · STAFF', { exact: true }).waitFor();
+  await page.getByText('STAFF', { exact: true }).waitFor();
   await page.getByRole('heading', { name: 'FlowPilot Demo Salon', exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: /Confirm booking|Create service|Delete staff/ }).count(), 0);
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();

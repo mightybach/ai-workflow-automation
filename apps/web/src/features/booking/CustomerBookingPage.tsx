@@ -9,6 +9,8 @@ import {
 } from '@flowpilot/contracts';
 import { apiRequest, ApiFailure, errorMessage } from '../../lib/api';
 import { ReschedulePanel } from './ReschedulePanel';
+import { Icon } from '../../components/Icon';
+import { ThemeToggle } from '../../components/ThemeToggle';
 
 const storageKey = 'flowpilot.customer.booking.v1';
 const emptyPreferences: BookingPreferences = { serviceId: null, staffId: null, date: null, durationMinutes: null };
@@ -258,22 +260,27 @@ export function CustomerBookingPage() {
   }
   const pending = !!draft?.confirmation && !booking || !!draft?.cancellation || !!draft?.rescheduling;
   const expired = !!proposal && Date.parse(proposal.expiresAt) <= now;
-  return <main className="customer-page">
-    <p className="eyebrow">FLOWPILOT BOOKING / SYNTHETIC DEMO</p>
+  const currentStep = !session ? 0 : booking ? 3 : proposal ? 2 : 1;
+  return <div className="booking-site">
+    <a className="skip-link" href="#booking-main">Skip to booking</a>
+    <header className="booking-site-header"><a className="booking-wordmark" href="/book"><span className="brand-mark">f<span>p</span></span><span>FlowPilot<small>Good moments, thoughtfully booked.</small></span></a><nav aria-label="Booking navigation"><a href="/">Staff dashboard</a><ThemeToggle /></nav></header>
+    <main className="customer-page" id="booking-main">
+    <header className="booking-hero"><div><p className="eyebrow">A LITTLE TIME, JUST FOR YOU</p>
     <h1>Find your next appointment.</h1>
     <p>Choose a real available time, review it, then confirm. This demo uses fictional customers only.</p>
-    <a href="/">Staff dashboard</a>
+    <div className="booking-promises"><span><Icon name="check" size={15} />Live availability</span><span><Icon name="check" size={15} />Your choice of staff</span><span><Icon name="check" size={15} />Review before booking</span></div></div><div className="booking-hero-art" aria-hidden="true"><span className="hero-orbit" /><span className="hero-calendar"><Icon name="calendar" size={48} /><span>Make space<br />for a good day.</span></span><span className="hero-spark"><Icon name="spark" size={28} /></span></div></header>
+    <ol className="booking-steps" aria-label="Booking progress">{['Get started', 'Choose a time', 'Review details', 'Your appointment'].map((step, index) => <li key={step} className={index === currentStep ? 'current' : index < currentStep ? 'complete' : ''} aria-current={index === currentStep ? 'step' : undefined}><span>{index < currentStep ? <Icon name="check" size={15} /> : String(index + 1).padStart(2, '0')}</span><strong>{step}</strong></li>)}</ol>
     {error && <p role="alert" className="error">{error}</p>}
     {busy && !chatPending && <p role="status">Working…</p>}
-    {!session ? <section aria-labelledby="start-customer"><h2 id="start-customer">Start customer session</h2>
+    {!session ? <div className="booking-start-layout"><div className="booking-welcome"><span className="round-icon"><Icon name="spark" size={25} /></span><h2>A simpler way<br />to take some time.</h2><p>Tell the assistant what you have in mind, or choose the details yourself. We’ll help you find a time that fits.</p><span className="booking-small-print">A fictional salon. A real booking flow.</span></div><section className="booking-start-card" aria-labelledby="start-customer"><p className="eyebrow">LET’S GET YOU SETTLED</p><h2 id="start-customer">Start customer session</h2>
       <form onSubmit={(event) => { event.preventDefault(); void start(); }}>
         <label htmlFor="business-slug">Business</label><input id="business-slug" value={slug} disabled={busy} onChange={(event) => setSlug(event.target.value)} required />
         <p className="note">Use demo-salon. No staff login is needed.</p><button disabled={busy}>Start booking</button>
-      </form></section> : <>
-      <div className="session-bar"><p><strong>{session.businessName}</strong> · {session.timezone} · up to {session.maxBookingDurationMinutes} minutes</p>
+      </form></section></div> : <>
+      <div className="session-bar customer-session"><p><strong>{session.businessName}</strong> · {session.timezone} · up to {session.maxBookingDurationMinutes} minutes</p>
         <button className="secondary" disabled={busy} onClick={() => { void refreshSetup(); }}>Refresh customer setup</button>
         <button className="secondary" disabled={busy || pending} onClick={() => { void end(); }}>End customer session</button></div>
-      {booking ? <section aria-labelledby="booking-complete"><h2 id="booking-complete">{booking.status === 'CANCELLED' ? 'Appointment cancelled' : 'Appointment confirmed'}</h2>
+      {booking ? <section className="booking-confirmation" aria-labelledby="booking-complete"><span className="confirmation-icon"><Icon name="check" size={28} /></span><h2 id="booking-complete">{booking.status === 'CANCELLED' ? 'Appointment cancelled' : 'Appointment confirmed'}</h2>
         <p className="success">Reference: <strong>{booking.reference}</strong></p>
         <p>{booking.serviceName} with {booking.staffName}<br />{localTime(booking.startAt, booking.timezone)} – {localTime(booking.endAt, booking.timezone)} ({booking.timezone})<br />{booking.durationMinutes} minutes · {booking.customer.name}</p>
         <p className="note">Keep this customer session to view the booking. Ending it removes access; the reference alone is not a login.</p>
@@ -281,17 +288,18 @@ export function CustomerBookingPage() {
         {(booking.status === 'CONFIRMED' || draft?.cancellation) && <>
           {!cancelReview && !draft?.cancellation ? <button className="secondary" disabled={busy || !!draft?.rescheduling} onClick={() => setCancelReview(true)}>Review cancellation</button> :
             <div className="schedule-review"><h3>Review cancellation</h3><p>Cancel appointment {booking.reference} shown above? This releases the full appointment. Closed times remain blocked. This demo allows cancellation before the appointment starts.</p>
-              <button disabled={busy} onClick={() => { void submitCancellation(); }}>{draft?.cancellation ? 'Retry same cancellation' : 'Confirm cancellation'}</button>
-              <button className="secondary" disabled={busy || !!draft?.cancellation} onClick={() => setCancelReview(false)}>Keep appointment</button>
+              <div className="row-actions"><button disabled={busy} onClick={() => { void submitCancellation(); }}>{draft?.cancellation ? 'Retry same cancellation' : 'Confirm cancellation'}</button>
+              <button className="secondary" disabled={busy || !!draft?.cancellation} onClick={() => setCancelReview(false)}>Keep appointment</button></div>
             </div>}
         </>}
         {draft && !cancelReview && (booking.status === 'CONFIRMED' || draft.rescheduling) && <ReschedulePanel key={booking.id} booking={booking} session={session} services={services} staff={staff} draft={draft} busy={busy} onBusy={setBusy} remember={remember}
           isActive={() => sessionRef.current === session} onReplaced={(current, value) => { remember(value); setBooking(current); setAvailable(null); }} />}
-        <button disabled={busy || pending} onClick={clearSelection}>Book another appointment</button>
-      </section> : <>
-        <section aria-labelledby="booking-chat"><h2 id="booking-chat">Booking assistant</h2>
+        <div className="row-actions"><button disabled={busy || pending} onClick={clearSelection}>Book another appointment</button></div>
+      </section> : <div className="booking-workspace">
+        <section className="booking-chat" aria-labelledby="booking-chat"><div className="chat-panel-heading"><span className="round-icon"><Icon name="spark" /></span><div><p className="eyebrow">A HELPING HAND</p><h2 id="booking-chat">Booking assistant</h2></div></div>
           <p className="note">Try “Haircut tomorrow for 30 minutes with Alex”. I’ll fill in the details and help you find a time. You review and confirm before anything is booked.</p>
           <details className="note"><summary>About this demo</summary><p>Use fictional details only. Replies identify AI or mock mode. Messages go to the server and, in AI mode, its local model. Up to 20 transcript entries stay in browser memory and clear on reload or session end. Chat cannot confirm bookings.</p></details>
+          {chat.length === 0 && <div className="chat-empty"><Icon name="spark" size={30} /><p>What would you like<br />to make time for?</p><small>Start with a service, a day and a duration.</small></div>}
           <ol ref={transcriptRef} className="chat-transcript" aria-label="Chat messages" aria-live="polite">{chat.map((item, index) => <li className={item.sender === 'You' ? 'chat-message chat-user' : 'chat-message chat-assistant'} key={index}><strong>{item.sender}: </strong>{item.text}</li>)}</ol>
           {chatPending && <p className="assistant-typing" role="status"><span className="typing-dots" aria-hidden="true"><i /><i /><i /></span>{chatPending === 'typing' ? 'Assistant is typing…' : 'Checking available appointments…'}</p>}
           {chatReady && !draft && <div className="chat-booking-action">
@@ -300,11 +308,11 @@ export function CustomerBookingPage() {
             <p className="note">Choose a time, then review and confirm your booking. Nothing is reserved yet.</p>
           </div>}
           <form onSubmit={(event) => { event.preventDefault(); void sendChat(); }}><label htmlFor="booking-message">Message</label>
-            <textarea id="booking-message" maxLength={1000} value={chatText} disabled={busy || !!draft} onChange={(event) => setChatText(event.target.value)} />
+            <textarea id="booking-message" placeholder="Tell us what you have in mind…" maxLength={1000} value={chatText} disabled={busy || !!draft} onChange={(event) => setChatText(event.target.value)} />
             <div className="row-actions"><button disabled={busy || !!draft || !chatText.trim()}>Send message</button></div>
           </form>
         </section>
-        <section aria-labelledby="choose-appointment"><h2 id="choose-appointment">Choose appointment details</h2>
+        <section className="booking-form" aria-labelledby="choose-appointment"><p className="eyebrow">YOUR APPOINTMENT, YOUR WAY</p><h2 id="choose-appointment">Choose appointment details</h2>
           <form onSubmit={(event) => { event.preventDefault(); void search(); }}>
             <fieldset disabled={busy || !!draft} onChange={() => { setAvailable(null); setError(''); setChatReady(false); }}>
               <label htmlFor="booking-service">Service</label><select id="booking-service" value={serviceId} onChange={(event) => setServiceId(event.target.value)} required>
@@ -328,9 +336,9 @@ export function CustomerBookingPage() {
               <button disabled={busy || available.pagination.page * 10 >= available.pagination.total} onClick={() => { void search(available.pagination.page + 1); }}>Next appointments</button></nav>
           </div>}
         </section>
-        {draft && !proposal && <section><h2>Recover selected appointment</h2><button disabled={busy} onClick={() => { void retryProposal(); }}>Retry selection</button>
-          {!pending && <button className="secondary" disabled={busy} onClick={clearSelection}>Choose another appointment</button>}</section>}
-        {proposal && <section ref={reviewRef} tabIndex={-1} aria-labelledby="review-appointment"><h2 id="review-appointment">Review appointment</h2>
+        {draft && !proposal && <section className="booking-recovery"><h2>Recover selected appointment</h2><div className="row-actions"><button disabled={busy} onClick={() => { void retryProposal(); }}>Retry selection</button>
+          {!pending && <button className="secondary" disabled={busy} onClick={clearSelection}>Choose another appointment</button>}</div></section>}
+        {proposal && <section className="booking-review" ref={reviewRef} tabIndex={-1} aria-labelledby="review-appointment"><p className="eyebrow">ONE LAST LOOK</p><h2 id="review-appointment">Review appointment</h2>
           <p><strong>{proposal.serviceName}</strong> with <strong>{proposal.staffName}</strong><br />{localTime(proposal.startAt, proposal.timezone)} – {localTime(proposal.endAt, proposal.timezone)}<br />{proposal.durationMinutes} minutes · {proposal.timezone}</p>
           <p className={expired ? 'error' : 'note'}>{expired ? 'Proposal expired. Choose another appointment, unless you are retrying an already submitted confirmation.' : 'Proposal expires ' + localTime(proposal.expiresAt, proposal.timezone) + '. No slots are held yet.'}</p>
           <form onSubmit={(event) => { event.preventDefault(); void submitConfirmation(); }}>
@@ -341,7 +349,7 @@ export function CustomerBookingPage() {
               <button type="button" className="secondary" disabled={busy || pending} onClick={clearSelection}>Choose another appointment</button></div>
           </form>
         </section>}
-      </>}
+      </div>}
     </>}
-  </main>;
+  </main><footer className="booking-site-footer"><span>FlowPilot Booking</span><span>A fictional salon. A thoughtful booking experience.</span><a href="/">Business workspace <Icon name="arrow" size={15} /></a></footer></div>;
 }
